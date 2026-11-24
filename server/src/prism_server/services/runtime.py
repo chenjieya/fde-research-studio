@@ -15,7 +15,7 @@ from prism_server.core.config import Settings
 from prism_server.core.exceptions import RuntimeServiceError
 from prism_server.core.secrets import CredentialCipher
 from prism_server.integrations.agent_server import create_agent_client, public_agent_error
-from prism_server.integrations.langsmith import read_trace_url
+from prism_server.integrations.langsmith import initialize_tracing, read_trace_url
 from prism_server.repositories.model_connections import ModelConnectionRepository
 from prism_server.repositories.runtime_runs import RunRepository
 from prism_server.schemas.runtime import TERMINAL_STATUSES, RunInput, RunRecord, RunStatus
@@ -43,6 +43,7 @@ class RuntimeService:
     async def initialize(self) -> None:
         """启动时准备数据库表；同步数据库操作放进工作线程。"""
         await asyncio.to_thread(self.repository.initialize)
+        await asyncio.to_thread(initialize_tracing, self.settings)
 
     def health(self) -> dict[str, object]:
         """返回运行窗口要展示的配置，不包含密码或密钥。"""

@@ -35,7 +35,7 @@ def stop_process(process):
 
 
 @contextmanager
-def agent_fixture():
+def agent_fixture(*, tracing: bool = False):
     url = os.environ["PRISM_TEST_DATABASE_URL"]
     database = PostgresDatabase(url, schema="test_" + uuid4().hex)
     database.initialize()
@@ -86,9 +86,11 @@ app = create_app(service)
                 "PRISM_AGENT_API_URL": api_url,
                 "PRISM_AGENT_PUBLIC_URL": api_url,
                 "PRISM_MODEL_ENCRYPTION_KEY": Fernet.generate_key().decode(),
-                "LANGSMITH_TRACING": "false",
-                "LANGSMITH_API_KEY": "",
-                "LANGSMITH_ENDPOINT": "https://api.smith.langchain.com",
+                "LANGSMITH_TRACING": "true" if tracing else "false",
+                "LANGSMITH_API_KEY": os.environ.get("LANGSMITH_API_KEY", "") if tracing else "",
+                "LANGSMITH_ENDPOINT": os.environ.get(
+                    "LANGSMITH_ENDPOINT", "https://api.smith.langchain.com"
+                ),
             }
             with (temp / "agent.log").open("w", encoding="utf-8") as log:
                 process = subprocess.Popen(
