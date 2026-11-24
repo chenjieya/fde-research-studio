@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#f7f8fa">
+    <meta name="description" content="Prism 多模态 AI 研究工作台，连接模型探索、实验验证与成果交付。">
+    <title>Prism · 多模态研究工作台</title>
+    <link rel="icon" href="./assets/prism.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="./src/styles.css">
+    <script type="module" src="./src/app.js"></script>
+  </head>
+  <body>
+    <div id="app"><p class="boot">正在打开研究工作台…</p></div>
+    <dialog id="modal" aria-label="研究记录编辑"></dialog>
+    <div id="toast" role="status" aria-live="polite"></div>
+    <input id="import-file" type="file" accept="application/json,.json" hidden>
+    <noscript>请启用 JavaScript 以使用研究工作台。</noscript>
+  </body>
+</html>
