@@ -1,0 +1,559 @@
+/* 右下角运行窗口的样式，与研究页面的重绘互不影响。 */
+.runtime-widget {
+  position: fixed;
+  right: 28px;
+  bottom: 25px;
+  z-index: 35;
+  font-size: 14px;
+  color: #324560;
+}
+.runtime-launcher {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 13px 17px;
+  background: #243d68;
+  color: #fff;
+  border: 1px solid #3c5681;
+  border-radius: 11px;
+  box-shadow: 0 7px 24px #243d6830;
+  font-size: 13px;
+}
+.runtime-launcher:hover {
+  background: #1d3257;
+}
+.runtime-launcher .icon {
+  width: 18px;
+  height: 18px;
+}
+.runtime-launcher-dot,
+.runtime-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  background: #a6adc0;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.runtime-launcher-dot.connected,
+.runtime-dot.connected {
+  background: #8bc5b0;
+}
+/* 面板高度受窗口限制，内容较多时只滚动内部区域。 */
+.runtime-panel {
+  width: 430px;
+  height: min(715px, calc(100dvh - 120px));
+  display: flex;
+  flex-direction: column;
+  border-radius: 15px;
+  border: 1px solid #d9e1ef;
+  background: #fff;
+  box-shadow: 0 16px 65px #182b4a30;
+  overflow: hidden;
+  margin-bottom: 13px;
+}
+.runtime-header {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 22px;
+  background: #edf1f8;
+  border-bottom: 1px solid #e0e6f1;
+}
+.runtime-header h2 {
+  font-size: 17px;
+  letter-spacing: 0;
+}
+.runtime-header p {
+  font-size: 12px;
+  color: #8795ab;
+  margin-top: 5px;
+}
+.runtime-header > .icon-button {
+  margin-left: auto;
+}
+.runtime-mark {
+  display: grid;
+  place-items: center;
+  width: 39px;
+  height: 42px;
+  border: 1px solid #d5e0f5;
+  background: #e3eaf8;
+  color: #6d8bc4;
+  border-radius: 10px;
+  flex-shrink: 0;
+}
+.runtime-mark .icon {
+  width: 23px;
+  height: 23px;
+}
+.runtime-tabs {
+  display: flex;
+  gap: 25px;
+  padding: 0 23px;
+  border-bottom: 1px solid #e7ebf2;
+}
+.runtime-tabs > button {
+  position: relative;
+  font-size: 13px;
+  color: #93a0b5;
+  padding: 14px 0;
+}
+.runtime-tabs > button.active {
+  color: #486bb7;
+}
+.runtime-tabs > button.active:after {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: #6d8bc4;
+}
+.runtime-tabs span {
+  font-size: 11px;
+  background: #edf1f8;
+  padding: 1px 5px;
+  border-radius: 4px;
+  margin-left: 4px;
+}
+.runtime-body {
+  padding: 20px 23px;
+  flex: 1;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+.runtime-health {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+  font-size: 12px;
+  color: #7c8da7;
+}
+.runtime-health > div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.runtime-refresh {
+  font-size: 12px;
+  color: #8296bb;
+}
+.runtime-refresh:hover {
+  color: #3159df;
+}
+.runtime-graph {
+  background: #f6f8fc;
+  border: 1px solid #e7ecf5;
+  border-radius: 9px;
+  padding: 16px 14px;
+  margin-bottom: 16px;
+}
+.runtime-graph-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  color: #8d9db8;
+  gap: 12px;
+}
+.runtime-graph-label code {
+  font:
+    11px Consolas,
+    monospace;
+  color: #8b9fbe;
+}
+.runtime-nodes {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 20px 0 6px;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.runtime-node {
+  padding: 8px 12px;
+  background: #fff;
+  border: 1px solid #dfe6f2;
+  border-radius: 6px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.runtime-node-main {
+  background: #e9effc;
+  border-color: #c4d2ee;
+  color: #6584bd;
+}
+.runtime-connector {
+  height: 1px;
+  width: 14px;
+  background: #cbd6e8;
+  flex-shrink: 0;
+}
+.runtime-observability {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 11px;
+  margin-bottom: 25px;
+  padding-bottom: 17px;
+  border-bottom: 1px solid #edf0f5;
+  color: #8c9ab0;
+}
+.runtime-observability > span {
+  color: #627a9e;
+}
+.runtime-observability strong {
+  font-size: 11px;
+  font-weight: 400;
+}
+.runtime-observability a {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: auto;
+  color: #7b93bc;
+  font-size: 11px;
+}
+.runtime-observability .icon {
+  width: 12px;
+  height: 12px;
+}
+.runtime-form > label {
+  display: block;
+  font-size: 12px;
+  margin-bottom: 11px;
+  color: #7286a5;
+}
+.runtime-form > textarea {
+  width: 100%;
+  padding: 12px 13px;
+  border-color: #dde5f2;
+  border-radius: 8px;
+  font-size: 14px;
+  color: #6d819f;
+  resize: vertical;
+  min-height: 92px;
+  max-height: 180px;
+  line-height: 1.8;
+}
+.runtime-form-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 12px 0 22px;
+}
+.runtime-form-bottom > span {
+  font-size: 11px;
+  color: #9ba7ba;
+}
+.runtime-form-bottom > .button {
+  font-size: 12px;
+  min-height: 35px;
+  padding: 8px 12px;
+}
+.runtime-form-bottom .icon {
+  width: 14px;
+  height: 14px;
+}
+.runtime-widget button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.runtime-first-run {
+  font-size: 12px;
+  line-height: 1.9;
+  color: #9aa8bd;
+  text-align: center;
+  padding: 22px 14px;
+  border: 1px dashed #e0e7f2;
+  border-radius: 8px;
+  margin: 7px 0;
+}
+.runtime-result {
+  border: 1px solid #e3e9f3;
+  border-radius: 9px;
+  padding: 15px;
+  margin-top: 15px;
+}
+.runtime-result-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+}
+.runtime-result-top > strong {
+  font-weight: 500;
+  color: #7b8da9;
+}
+.runtime-status {
+  padding: 3px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  white-space: nowrap;
+  background: #eef2fa;
+  color: #8297bb;
+}
+.runtime-status.status-success {
+  background: #edf5f1;
+  color: #79a28e;
+}
+.runtime-status.status-error,
+.runtime-status.status-timeout {
+  background: #faf0eb;
+  color: #ba8c76;
+}
+.runtime-status.status-interrupted {
+  background: #f2f2f6;
+  color: #9796aa;
+}
+.runtime-input {
+  font-size: 12px;
+  line-height: 1.9;
+  color: #95a1b6;
+  margin-top: 13px;
+  overflow-wrap: anywhere;
+  white-space: pre-line;
+}
+.runtime-output {
+  font-size: 13px;
+  line-height: 1.9;
+  color: #6a81a3;
+  background: #f3f6fb;
+  border-radius: 6px;
+  padding: 12px;
+  margin-top: 12px;
+  white-space: pre-line;
+}
+.runtime-error {
+  font-size: 12px;
+  color: #b47d68;
+  background: #fbf2ed;
+  padding: 12px 13px;
+  border-radius: 7px;
+  line-height: 1.9;
+  margin-bottom: 15px;
+  overflow-wrap: anywhere;
+}
+.runtime-result > .runtime-error {
+  margin-top: 12px;
+}
+.runtime-json {
+  font-size: 11px;
+  color: #8f9fba;
+  margin-top: 14px;
+}
+.runtime-json summary {
+  cursor: pointer;
+}
+.runtime-json pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font:
+    11px/1.8 Consolas,
+    'Microsoft YaHei',
+    monospace;
+  background: #f5f7fc;
+  border-radius: 6px;
+  padding: 10px;
+  max-height: 230px;
+  overflow: auto;
+}
+.runtime-identifiers {
+  margin-top: 15px;
+  border-top: 1px solid #edf0f6;
+  padding-top: 12px;
+  font-size: 10px;
+  color: #a0abbe;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.runtime-identifiers code {
+  font:
+    10px Consolas,
+    monospace;
+  overflow-wrap: anywhere;
+  color: #8a9ab4;
+}
+.runtime-trace {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  font-size: 11px;
+  color: #9ba8bd;
+  margin-top: 13px;
+}
+.runtime-trace button,
+.runtime-trace a {
+  font-size: 11px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: #7c94bb;
+}
+.runtime-trace .icon {
+  width: 12px;
+  height: 12px;
+}
+.runtime-run-controls {
+  display: flex;
+  gap: 15px;
+  justify-content: flex-end;
+  margin-top: 15px;
+}
+.runtime-run-controls button {
+  font-size: 11px;
+  color: #8a9bb9;
+}
+.runtime-history-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 11px;
+  color: #99a8be;
+  margin-bottom: 16px;
+}
+.runtime-history-label button {
+  font-size: 11px;
+  color: #8199bf;
+}
+.runtime-history-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-align: left;
+  width: 100%;
+  padding: 15px 0;
+  border-bottom: 1px solid #e9edf5;
+}
+.runtime-history-item:hover .runtime-history-copy strong {
+  color: #4c71b9;
+}
+.runtime-history-icon {
+  background: #f0f4fb;
+  border-radius: 7px;
+  display: grid;
+  place-items: center;
+  width: 31px;
+  height: 35px;
+  flex-shrink: 0;
+  color: #91a5c7;
+}
+.runtime-history-icon .icon {
+  width: 16px;
+  height: 16px;
+}
+.runtime-history-copy {
+  flex: 1;
+  min-width: 0;
+}
+.runtime-history-copy > strong {
+  font-size: 12px;
+  font-weight: 400;
+  color: #778ba9;
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.runtime-history-copy > span {
+  display: block;
+  font-size: 10px;
+  color: #a4afc1;
+  margin-top: 7px;
+}
+.runtime-more {
+  display: block;
+  text-align: center;
+  font-size: 12px;
+  color: #8199bf;
+  margin: 22px auto 2px;
+}
+.runtime-loading {
+  font-size: 12px;
+  color: #8a9fbe;
+  padding: 18px 0;
+  text-align: center;
+}
+.runtime-footer {
+  padding: 12px 23px;
+  background: #f8fafd;
+  border-top: 1px solid #e5ebf5;
+  font-size: 10px;
+  color: #a1aec3;
+}
+.runtime-body button:focus-visible,
+.runtime-launcher:focus-visible {
+  outline: 2px solid #6c8ac2;
+  outline-offset: 3px;
+}
+@media (max-width: 620px) {
+  .runtime-widget {
+    right: 13px;
+    bottom: 14px;
+  }
+  .runtime-panel {
+    width: calc(100vw - 26px);
+    height: min(700px, calc(100dvh - 100px));
+    border-radius: 13px;
+  }
+  .runtime-launcher {
+    margin-left: auto;
+    padding: 11px 13px;
+    font-size: 12px;
+  }
+  .runtime-header {
+    padding: 18px;
+  }
+  .runtime-header h2 {
+    font-size: 16px;
+  }
+  .runtime-header p {
+    font-size: 11px;
+  }
+  .runtime-mark {
+    width: 34px;
+    height: 37px;
+  }
+  .runtime-body {
+    padding: 18px;
+  }
+  .runtime-tabs {
+    padding: 0 18px;
+  }
+  .runtime-form-bottom > span {
+    font-size: 10px;
+  }
+  .runtime-graph-label {
+    font-size: 11px;
+  }
+  .runtime-graph-label code {
+    font-size: 10px;
+  }
+  .runtime-node {
+    padding: 7px 10px;
+    font-size: 11px;
+  }
+  .runtime-observability {
+    font-size: 10px;
+  }
+  .runtime-observability strong {
+    font-size: 10px;
+  }
+  .runtime-header .icon-button {
+    width: 28px;
+  }
+  .runtime-footer {
+    padding: 12px 18px;
+    font-size: 9px;
+  }
+}

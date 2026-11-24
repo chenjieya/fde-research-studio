@@ -1,4 +1,6 @@
+# 前后端共用：构建产物、临时文件和本机凭据不进 Git。
 dist/
+build/
 .codex/
 .claude/
 .qa/
@@ -7,3 +9,13 @@ node_modules/
 .env.*
 !.env.example
 *.log
+# Python 和 LangGraph 在本机自动生成的环境、缓存与运行数据。
+.venv/
+.uv-cache/
+.langgraph_api/
+.data/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/

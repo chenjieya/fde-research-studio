@@ -1,4 +1,15 @@
 {
-  "compilerOptions": { "allowJs": true, "checkJs": true, "noEmit": true, "strict": true, "target": "ES2022", "module": "ESNext", "moduleResolution": "Bundler", "lib": ["ES2022", "DOM", "DOM.Iterable"] },
+  // 前端类型检查配置。TypeScript 允许在这个文件中写注释。
+  "compilerOptions": {
+    // 当前前端使用 JS + JSDoc，这两项让 JS 也接受类型检查。
+    "allowJs": true,
+    "checkJs": true,
+    "noEmit": true, // 这里只检查类型，实际打包交给 Vite。
+    "strict": true,
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"]
+  },
   "include": ["src/**/*.js", "src/**/*.d.ts"]
 }

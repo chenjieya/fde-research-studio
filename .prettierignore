@@ -1,0 +1,17 @@
+# 前端格式检查的排除项；Python 代码交给 Ruff。
+node_modules/
+dist/
+build/
+.venv/
+.data/
+.langgraph_api/
+.claude/
+.codex/
+.qa/
+.ruff_cache/
+server/
+# 部署文件单独维护；锁文件由各自的包管理器生成。
+deploy/
+uv.lock
+package-lock.json
+pnpm-lock.yaml

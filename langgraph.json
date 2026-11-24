@@ -1,0 +1,22 @@
+{
+  "$schema": "https://langgra.ph/schema.json",
+  "python_version": "3.11",
+  "source": { "kind": "uv" },
+  "graphs": {
+    "prism_research": "prism_server.graphs.research.graph:graph"
+  },
+  "http": {
+    "app": "prism_server.app:app",
+    "cors": {
+      "allow_origins": [
+        "http://127.0.0.1:4178",
+        "http://localhost:4178",
+        "https://smith.langchain.com"
+      ],
+      "allow_methods": ["*"],
+      "allow_headers": ["*"],
+      "allow_credentials": true
+    }
+  },
+  "env": ".env"
+}
