@@ -19,10 +19,12 @@ const paths = {
   download: '<path d="M12 3v12m-5-5 5 5 5-5M4 16v5h16v-5"/>',
   upload: '<path d="M12 16V4m-5 5 5-5 5 5M4 17v4h16v-4"/>',
   check: '<path d="m5 12 4 4L19 6"/>',
+  refresh: '<path d="M20 7v5h-5M4 17v-5h5M6 7a7 7 0 0 1 11-2l3 3M4 16l3 3a7 7 0 0 0 11-2"/>',
   image:
     '<rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8" cy="8" r="1.5"/><path d="m3 17 5-5 4 4 4-6 5 7"/>',
   cad: '<path d="m12 2 9 5v10l-9 5-9-5V7l9-5Zm0 10 9-5M12 12 3 7m9 5v10"/>',
   video: '<rect x="3" y="5" width="18" height="14" rx="3"/><path d="m10 9 5 3-5 3V9Z"/>',
+  text: '<path d="M5 4h14v12H9l-4 4V4ZM8 8h8M8 12h5"/>',
   clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
   edit: '<path d="m16 3 5 5-12 12-6 1 1-6L16 3Zm-2 2 5 5"/>',
   info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6m0-10v1"/>',
@@ -41,12 +43,14 @@ export function icon(name, className = '') {
 }
 let count = 0;
 /**
- * 用本地 SVG 绘制图片、CAD 和视频领域的配图。
+ * 用本地 SVG 绘制各研究领域的配图。
  * @param {string} domain
  * @param {boolean} [hero]
  */
 export function artwork(domain, hero = false) {
   const id = `study-${++count}`;
+  if (domain === '语言文本')
+    return `<svg viewBox="0 0 480 260" class="study text-study" aria-hidden="true"><defs><linearGradient id="${id}" x2="1" y2="1"><stop stop-color="#fffdf7"/><stop offset="1" stop-color="#eee2cd"/></linearGradient></defs><path d="M66 64h348M66 110h348M66 156h348M66 202h348" stroke="#cbbb9f" stroke-opacity=".2"/><rect x="133" y="30" width="218" height="194" rx="12" fill="#d4c1a4" opacity=".35" transform="rotate(8 242 127)"/><rect x="119" y="25" width="218" height="194" rx="12" fill="url(#${id})" stroke="#cbb99b" transform="rotate(-5 228 122)"/><g transform="rotate(-5 228 122)"><text x="147" y="90" fill="#8b7353" font-family="Georgia,serif" font-size="44">Aa</text><path d="M148 115h159M148 130h130M148 145h150M148 160h105" stroke="#b7a586" stroke-width="3" stroke-linecap="round"/><rect x="148" y="180" width="63" height="17" rx="8" fill="#ded2bb"/><circle cx="224" cy="188" r="3" fill="#b49a73"/><circle cx="236" cy="188" r="3" fill="#b49a73"/><circle cx="248" cy="188" r="3" fill="#b49a73"/></g><path d="M309 132h72a10 10 0 0 1 10 10v40a10 10 0 0 1-10 10h-24l-17 15v-15h-31a10 10 0 0 1-10-10v-40a10 10 0 0 1 10-10Z" fill="#8d9b8c" stroke="#7c8d7d"/><path d="M315 153h59M315 168h40" stroke="#f1f1df" stroke-width="3" stroke-linecap="round"/><path d="m94 64 5 12 12 5-12 5-5 12-5-12-12-5 12-5Z" fill="#b4a07e"/></svg>`;
   if (domain === 'CAD') {
     const rings = Array.from(
       { length: 14 },
@@ -64,5 +68,5 @@ export function artwork(domain, hero = false) {
  * @param {import('../types').ModelRecord} model
  */
 export function modelCard(model) {
-  return `<article class="model-card"><button class="model-art ${model.domain === '图片' ? 'art-image' : model.domain === 'CAD' ? 'art-cad' : 'art-video'}" data-action="detail" data-id="${escapeHtml(model.id)}" aria-label="查看 ${escapeHtml(model.name)}">${artwork(model.domain)}<span class="art-domain">${icon(model.domain === '图片' ? 'image' : model.domain === 'CAD' ? 'cad' : 'video')}${model.domain}</span></button><div class="model-body"><div class="model-title-row"><button class="title-button" data-action="detail" data-id="${escapeHtml(model.id)}">${escapeHtml(model.name)}</button><button class="icon-button favorite ${model.favorite ? 'is-favorite' : ''}" data-action="favorite" data-id="${escapeHtml(model.id)}" aria-label="${model.favorite ? '取消关注' : '关注'} ${escapeHtml(model.name)}" aria-pressed="${model.favorite}">${icon('star')}</button></div><p class="model-vendor">${escapeHtml(model.vendor)}</p><p class="model-summary">${escapeHtml(model.summary)}</p><div class="model-bottom"><span class="cap-label">${model.capabilities.map(escapeHtml).join(' / ')}</span><span class="stage stage-${model.stage}">${model.stage}</span></div></div></article>`;
+  return `<article class="model-card"><button class="model-art ${model.domain === '图片' ? 'art-image' : model.domain === 'CAD' ? 'art-cad' : model.domain === '视频' ? 'art-video' : 'art-text'}" data-action="detail" data-id="${escapeHtml(model.id)}" aria-label="查看 ${escapeHtml(model.name)}">${artwork(model.domain)}<span class="art-domain">${icon(model.domain === '图片' ? 'image' : model.domain === 'CAD' ? 'cad' : model.domain === '视频' ? 'video' : 'text')}${model.domain}</span></button><div class="model-body"><div class="model-title-row"><button class="title-button" data-action="detail" data-id="${escapeHtml(model.id)}">${escapeHtml(model.name)}</button><button class="icon-button favorite ${model.favorite ? 'is-favorite' : ''}" data-action="favorite" data-id="${escapeHtml(model.id)}" aria-label="${model.favorite ? '取消关注' : '关注'} ${escapeHtml(model.name)}" aria-pressed="${model.favorite}">${icon('star')}</button></div><p class="model-vendor">${escapeHtml(model.vendor)}</p><p class="model-summary">${escapeHtml(model.summary)}</p><div class="model-bottom"><span class="cap-label">${model.capabilities.map(escapeHtml).join(' / ')}</span><span class="stage stage-${model.stage}">${model.stage}</span></div></div></article>`;
 }

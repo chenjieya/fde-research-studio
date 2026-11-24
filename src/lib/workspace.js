@@ -5,7 +5,7 @@
 export function emptyWorkspace() {
   return { version: 1, models: [], experiments: [], notes: [], artifacts: [] };
 }
-export const domains = /** @type {const} */ (['图片', 'CAD', '视频']);
+export const domains = /** @type {const} */ (['图片', 'CAD', '视频', '语言文本']);
 export const stages = /** @type {const} */ (['待调研', '研究中', '已验证', '持续跟踪']);
 export const kinds = /** @type {const} */ ([
   '研究周报',

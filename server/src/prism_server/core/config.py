@@ -1,7 +1,7 @@
 """从环境变量读取后端配置，不把数据库密码和 API key 返回给前端。"""
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from urllib.parse import urlparse
 
 
@@ -24,6 +24,7 @@ class Settings:
     tracing_key_configured: bool
     tracing_project: str
     tracing_endpoint: str
+    model_encryption_key: str = field(default="", repr=False)
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -49,4 +50,5 @@ class Settings:
             tracing_key_configured=bool(os.getenv("LANGSMITH_API_KEY", "").strip()),
             tracing_project=os.getenv("LANGSMITH_PROJECT", "prism-research-studio"),
             tracing_endpoint=os.getenv("LANGSMITH_ENDPOINT", "https://api.smith.langchain.com"),
+            model_encryption_key=os.getenv("PRISM_MODEL_ENCRYPTION_KEY", ""),
         )

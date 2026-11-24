@@ -2,7 +2,7 @@ import { icon } from './visuals.js';
 import { escapeHtml as esc, safeUrl } from '../lib/workspace.js';
 import * as api from '../lib/runtime-api.js';
 
-/** 挂载右下角运行窗口，主页面重绘时保留输入和进行中的请求。 */
+/** 聊天窗口独立挂载，研究页面切换时保留会话与草稿。 */
 export function mountRuntimeConsole() {
   if (document.querySelector('#runtime-studio')) return;
   const root = document.createElement('section');
@@ -10,21 +10,23 @@ export function mountRuntimeConsole() {
   root.className = 'runtime-widget';
   root.setAttribute('aria-label', '运行工作室');
   document.body.append(root);
-  let open = false;
-  let loading = false;
-  let busy = false;
-  let historyTab = false;
-  let more = false;
-  let error = '';
-  let draft = '验证 Prism 研究工作台与 Agent Server 的连接。';
+  let open = false,
+    loading = false,
+    busy = false,
+    historyOpen = false,
+    more = false;
+  let error = '',
+    draft = '',
+    selectedModel = '',
+    conversationId = '';
+  /** @type {import('../types').ModelConnection[]} */
+  let models = [];
+  /** @type {import('../types').Conversation[]} */
+  let conversations = [];
+  /** @type {import('../types').RuntimeRun[]} */
+  let messages = [];
   /** @type {import('../types').RuntimeHealth | null} */
   let health = null;
-  /** @type {import('../types').RuntimeGraph | null} */
-  let graph = null;
-  /** @type {import('../types').RuntimeRun[]} */
-  let history = [];
-  /** @type {import('../types').RuntimeRun | null} */
-  let active = null;
   /** @type {AbortController | null} */
   let controller = null;
   /** @type {ReturnType<typeof setTimeout> | undefined} */
@@ -32,152 +34,178 @@ export function mountRuntimeConsole() {
   const terminal = new Set(['success', 'error', 'timeout', 'interrupted']);
   const statusLabels = {
     pending: '准备中',
-    running: '运行中',
+    running: '思考中',
     success: '已完成',
     error: '失败',
     timeout: '超时',
     interrupted: '已中断',
   };
-  /**
-   * 把请求异常变成页面提示，主动取消请求时不显示报错。
-   * @param {unknown} caught
-   */
-  function setError(caught) {
-    if (caught instanceof DOMException && caught.name === 'AbortError') return;
-    error = caught instanceof Error ? caught.message : '请求失败，请重试。';
-  }
-  /** 开始新请求前取消旧等待和轮询，避免旧结果覆盖新状态。 */
+  const activeRun = () => messages.find((r) => !terminal.has(r.status));
+  /** 用户操作取消旧请求，防止切换会话后旧响应覆盖页面。 */
   function begin() {
     controller?.abort();
     clearTimeout(pollTimer);
     controller = new AbortController();
     return controller.signal;
   }
-  /**
-   * 同时更新当前运行与历史列表，按编号去重。
-   * @param {import('../types').RuntimeRun} record
-   */
-  function updateRun(record) {
-    active = record;
-    const index = history.findIndex((r) => r.id === record.id);
-    if (index === -1) history.unshift(record);
-    else history[index] = record;
+  /** @param {unknown} caught */
+  function setError(caught) {
+    if (caught instanceof DOMException && caught.name === 'AbortError') return;
+    error = caught instanceof Error ? caught.message : '请求失败，请重试。';
   }
-  /**
-   * 展示一次运行的输入、结果、状态和追踪核验信息。
-   * @param {import('../types').RuntimeRun} record
-   */
-  function recordView(record) {
-    return `<div class="runtime-result"><div class="runtime-result-top"><strong>本次验证</strong><span class="runtime-status status-${record.status}">${statusLabels[record.status]}</span></div><p class="runtime-input">${esc(record.input)}</p>${record.output ? `<p class="runtime-output">${esc(record.output.message || '执行完成')}</p><details class="runtime-json"><summary>查看返回数据</summary><pre>${esc(JSON.stringify(record.output, null, 2))}</pre></details>` : ''}${record.error ? `<p class="runtime-error">${esc(record.error)}</p>` : ''}<div class="runtime-identifiers"><span>运行编号</span><code>${esc(record.agent_run_id || record.id)}</code></div><div class="runtime-trace"><span>${record.trace_status === 'verified' ? 'LangSmith 记录已核验' : 'LangSmith 记录未核验'}</span>${record.trace_url && safeUrl(record.trace_url) ? `<a href="${esc(safeUrl(record.trace_url))}" target="_blank" rel="noopener noreferrer">查看监测 ${icon('external')}</a>` : `<button data-runtime="trace" ${!record.agent_run_id || busy ? 'disabled' : ''}>核验监测</button>`}</div>${!terminal.has(record.status) ? `<div class="runtime-run-controls"><button data-runtime="refresh-run" ${busy ? 'disabled' : ''}>刷新状态</button><button data-runtime="cancel" ${busy ? 'disabled' : ''}>中断运行</button></div>` : ''}</div>`;
+  /** @param {import('../types').RuntimeRun} run */
+  function update(run) {
+    const index = messages.findIndex((item) => item.id === run.id);
+    if (index < 0) messages.push(run);
+    else messages[index] = run;
   }
-  /** 展示图结构、服务状态和验证输入框。 */
-  function graphView() {
-    const tracing = health?.tracing;
-    return `<div class="runtime-health"><div><span class="runtime-dot ${health ? 'connected' : ''}"></span><span>${health ? 'Agent Server 在线' : '等待服务连接'}</span></div><button data-runtime="refresh" class="runtime-refresh" ${loading || busy ? 'disabled' : ''}>${loading ? '检查中…' : '重新检查'}</button></div>${graph ? `<div class="runtime-graph"><div class="runtime-graph-label"><span>已读取编译图</span><code>${esc(graph.graph_id)}</code></div><div class="runtime-nodes">${graph.graph.nodes.map((n, i) => `${i ? '<span class="runtime-connector" aria-hidden="true"></span>' : ''}<span class="runtime-node ${n.id === 'connection_check' ? 'runtime-node-main' : ''}">${n.id === '__start__' ? '输入' : n.id === '__end__' ? '输出' : n.id === 'connection_check' ? '连通性验证' : esc(n.id)}</span>`).join('')}</div></div>` : ''}<div class="runtime-observability"><span>LangSmith</span><strong>${tracing?.enabled && tracing.key_configured ? '已配置，待核验实际运行' : '等待本地 .env 配置'}</strong>${health && safeUrl(health.studio_url) ? `<a href="${esc(safeUrl(health.studio_url))}" target="_blank" rel="noopener noreferrer">打开 Studio ${icon('external')}</a>` : ''}</div><form class="runtime-form"><label for="runtime-prompt">验证输入</label><textarea id="runtime-prompt" name="prompt" rows="3" required maxlength="4000" placeholder="输入一段用于验证连接的文字" ${busy || (active && !terminal.has(active.status)) ? 'disabled' : ''}>${esc(draft)}</textarea><div class="runtime-form-bottom"><span>框架验证 · 不调用 AI 模型</span><button type="submit" class="button primary" ${!graph || loading || busy || (active && !terminal.has(active.status)) ? 'disabled' : ''}>${icon('experiments')}${busy ? '提交中…' : '运行验证'}</button></div></form>${active ? recordView(active) : '<div class="runtime-first-run">执行一次验证，确认前端、SDK 与图服务的调用链路。</div>'}`;
+  /** @param {import('../types').RuntimeRun} run */
+  function turnView(run) {
+    const output = run.output;
+    const success = run.status === 'success' && output?.execution_mode === 'model';
+    const traceUrl = safeUrl(run.trace_url || '');
+    return `<article class="chat-turn"><div class="chat-user"><span class="chat-role">你</span><p>${esc(run.input)}</p></div><div class="chat-assistant"><div class="chat-model-label">${icon('spark')}<strong>${esc(run.model_snapshot?.name || '历史模型')}</strong><small>${esc(run.model_snapshot?.api_model || '')}</small><span class="runtime-status status-${run.status}">${statusLabels[run.status]}</span></div>${output ? `<div class="chat-response">${esc(output.message || '')}</div>` : !terminal.has(run.status) ? '<div class="chat-thinking" role="status"><i></i><i></i><i></i><span>正在等待模型响应…</span></div>' : ''}${run.error ? `<p class="runtime-error">${esc(run.error)}</p>` : ''}<div class="chat-turn-actions">${success ? `<button data-runtime="experiment" data-run-id="${esc(run.id)}">${icon('experiments')}录入实验</button><span>${typeof output.latency_seconds === 'number' ? output.latency_seconds + 's' : ''}${output.usage && typeof output.usage === 'object' && 'total_tokens' in output.usage ? ` · ${esc(output.usage.total_tokens)} tokens` : ''}</span>` : ''}${traceUrl ? `<a href="${esc(traceUrl)}" target="_blank" rel="noopener noreferrer">查看追踪 ${icon('external')}</a>` : run.agent_run_id ? `<button data-runtime="trace" data-run-id="${esc(run.id)}" ${busy ? 'disabled' : ''}>核验追踪</button>` : ''}</div>${!terminal.has(run.status) ? `<button class="chat-cancel" data-runtime="cancel" data-run-id="${esc(run.id)}" ${busy ? 'disabled' : ''}>中断本轮</button>` : ''}</div></article>`;
   }
-  /** 展示已保存的历史运行，并支持继续加载更早记录。 */
-  function historyView() {
-    return `<div class="runtime-history-label"><span>服务端保存的运行记录</span><button data-runtime="refresh" ${loading || busy ? 'disabled' : ''}>${loading ? '读取中…' : '刷新'}</button></div>${history.length ? history.map((r) => `<button class="runtime-history-item ${active?.id === r.id ? 'current' : ''}" data-runtime="select-run" data-run-id="${esc(r.id)}"><span class="runtime-history-icon">${icon('experiments')}</span><span class="runtime-history-copy"><strong>${esc(r.input)}</strong><span>${esc(new Date(r.started_at).toLocaleString('zh-CN', { hour12: false }))}</span></span><span class="runtime-status status-${r.status}">${statusLabels[r.status]}</span></button>`).join('') : '<div class="runtime-first-run">还没有运行记录。到“图与连接”执行第一次验证。</div>'}${more ? `<button class="runtime-more" data-runtime="more" ${loading || busy ? 'disabled' : ''}>加载更早记录</button>` : ''}`;
-  }
-  /** 重绘运行窗口，展开和收起共用同一个挂载节点。 */
   function render() {
-    root.innerHTML = `${open ? `<div class="runtime-panel" role="region" aria-label="运行工作室面板"><header class="runtime-header"><span class="runtime-mark">${icon('experiments')}</span><div><h2>运行工作室</h2><p>从研究记录，走向可执行的验证。</p></div><button class="icon-button" data-runtime="close" aria-label="关闭运行工作室">${icon('close')}</button></header><div class="runtime-tabs"><button data-runtime="graph-tab" class="${!historyTab ? 'active' : ''}" aria-pressed="${!historyTab}">图与连接</button><button data-runtime="history-tab" class="${historyTab ? 'active' : ''}" aria-pressed="${historyTab}">运行记录 <span>${history.length}</span></button></div><div class="runtime-body" aria-busy="${loading}">${loading && !health ? '<div class="runtime-loading">正在检查服务、编译图与运行记录…</div>' : ''}${error ? `<div class="runtime-error" role="alert">${esc(error)}</div>` : ''}${historyTab ? historyView() : graphView()}</div><footer class="runtime-footer">2.2 框架联通 · 真实模型在下一阶段接入</footer></div>` : ''}<button class="runtime-launcher" data-runtime="toggle" aria-expanded="${open}" aria-label="${open ? '关闭' : '打开'}运行工作室">${icon(open ? 'close' : 'experiments')}<span>${open ? '收起工作室' : '运行工作室'}</span><span class="runtime-launcher-dot ${health ? 'connected' : ''}" aria-hidden="true"></span></button>`;
+    const focused = document.activeElement;
+    const hadFocus = focused instanceof HTMLTextAreaElement && focused.id === 'runtime-prompt';
+    const selection = hadFocus ? [focused.selectionStart, focused.selectionEnd] : null;
+    const scrollNode = root.querySelector('.chat-messages');
+    const scrollTop = scrollNode?.scrollTop || 0;
+    const nearBottom =
+      !scrollNode || scrollNode.scrollHeight - scrollNode.scrollTop - scrollNode.clientHeight < 80;
+    const active = activeRun();
+    const title = conversations.find((item) => item.id === conversationId)?.title || '新对话';
+    root.innerHTML = `${open ? `<div class="runtime-panel chat-panel"><header class="runtime-header"><div class="runtime-mark">${icon('spark')}</div><div><p class="chat-eyebrow">PRISM / PLAYGROUND</p><h2>运行工作室</h2></div><button class="icon-button" data-runtime="close" aria-label="关闭运行工作室">${icon('close')}</button></header><div class="chat-toolbar"><button class="chat-history-toggle" data-runtime="history" aria-expanded="${historyOpen}">${icon('clock')}<span>${esc(title)}</span>${icon('down')}</button><button class="icon-button" data-runtime="new" ${loading || busy ? 'disabled' : ''} aria-label="新建对话" title="新建对话">${icon('plus')}</button><button class="icon-button" data-runtime="refresh" ${loading || busy ? 'disabled' : ''} aria-label="刷新对话" title="刷新对话">${icon('refresh')}</button></div>${historyOpen ? `<div class="chat-history"><span class="eyebrow">对话记录</span>${conversations.map((c) => `<button data-runtime="select" data-conversation-id="${esc(c.id)}" ${busy || loading ? 'disabled' : ''} class="${c.id === conversationId ? 'selected' : ''}"><strong>${esc(c.title)}</strong><small>${esc(new Date(c.updated_at).toLocaleDateString('zh-CN'))}</small></button>`).join('') || '<p class="muted">还没有对话记录。</p>'}${more ? `<button data-runtime="more" ${busy || loading ? 'disabled' : ''}>更早的对话</button>` : ''}</div>` : ''}<div class="chat-messages" aria-live="polite" aria-busy="${loading || !!active}">${loading ? '<div class="chat-empty"><p>正在读取对话…</p></div>' : messages.length ? messages.map(turnView).join('') : `<div class="chat-empty"><div class="chat-orbit">${icon('spark')}</div><p class="eyebrow">从一个问题开始</p><h3>让想法，进入验证。</h3><p>选择模型，聊聊技术路线、研究疑问或实验方案。<br>值得保留的结果，可以由你确认后录入实验。</p>${!models.length ? '<a href="#models" data-runtime-link="configure">前往模型档案，配置接入 →</a>' : '<button class="chat-suggestion" data-runtime="suggest">如何设计一次公平的多模态模型对比？</button>'}</div>`}</div>${error ? `<div class="chat-error" role="alert">${esc(error)}</div>` : ''}<form class="chat-composer"><label class="sr-only" for="runtime-prompt">发送给模型的消息</label><textarea id="runtime-prompt" name="prompt" rows="3" maxlength="20000" placeholder="输入你的问题，Enter 发送，Shift + Enter 换行" ${loading || busy || active ? 'disabled' : ''}>${esc(draft)}</textarea><div class="chat-composer-bottom"><label class="chat-model-picker"><span class="sr-only">本轮模型</span>${icon('models')}<select name="model" aria-label="本轮模型" ${loading || busy || active ? 'disabled' : ''}>${models.length ? models.map((m) => `<option value="${esc(m.model_id)}" ${m.model_id === selectedModel ? 'selected' : ''}>${esc(m.name)} · ${esc(m.api_model)}</option>`).join('') : '<option value="">请先配置模型</option>'}</select></label><button type="submit" class="chat-send" aria-label="发送消息" ${!models.length || loading || busy || active ? 'disabled' : ''}>${icon('chevron')}</button></div></form><footer class="chat-footer"><span><i class="runtime-dot ${health ? 'connected' : ''}"></i>${health ? '已连接 · 切换模型后继续对话' : '等待服务连接'}</span>${health && safeUrl(health.studio_url) ? `<a href="${esc(safeUrl(health.studio_url))}" target="_blank" rel="noopener noreferrer">Studio ${icon('external')}</a>` : ''}</footer></div>` : ''}<button class="runtime-launcher" data-runtime="toggle" aria-expanded="${open}"><span class="runtime-launcher-dot ${health ? 'connected' : ''}"></span>${icon('spark')}运行工作室${icon(open ? 'down' : 'plus')}</button>`;
+    const nextScroll = root.querySelector('.chat-messages');
+    if (nextScroll) nextScroll.scrollTop = nearBottom ? nextScroll.scrollHeight : scrollTop;
+    const input = root.querySelector('#runtime-prompt');
+    if (hadFocus && input instanceof HTMLTextAreaElement && !input.disabled) {
+      input.focus();
+      if (selection) input.setSelectionRange(selection[0], selection[1]);
+    }
   }
-  /** 重新读取服务、编译图和历史记录，需要时恢复未结束运行的轮询。 */
+  function schedulePoll() {
+    clearTimeout(pollTimer);
+    if (!open || busy || loading || !activeRun()) return;
+    pollTimer = setTimeout(() => {
+      void refreshActive();
+    }, 1200);
+  }
+  async function refreshActive() {
+    const active = activeRun();
+    if (!open || busy || loading || !active) return;
+    const signal = controller?.signal;
+    try {
+      const record = await api.getRun(active.id, signal);
+      if (signal?.aborted) return;
+      update(record);
+      error = '';
+    } catch (caught) {
+      if (!signal?.aborted) setError(caught);
+    }
+    if (!signal?.aborted) {
+      render();
+      schedulePoll();
+    }
+  }
   async function load() {
     const signal = begin();
     loading = true;
+    busy = false;
     error = '';
     render();
-    let healthReached = false;
     try {
-      health = await api.getHealth(signal);
-      healthReached = true;
-      const [compiled, records] = await Promise.all([api.getGraph(signal), api.getRuns(0, signal)]);
+      const [nextHealth, nextModels, nextConversations] = await Promise.all([
+        api.getHealth(signal),
+        api.getModelConnections(signal),
+        api.getConversations(0, signal),
+      ]);
       if (signal.aborted) return;
-      graph = compiled;
-      history = records;
-      more = records.length === 20;
-      if (active) active = history.find((r) => r.id === active?.id) ?? active;
-      else active = records.find((r) => !terminal.has(r.status)) ?? null;
-      if (active && !terminal.has(active.status)) schedulePoll();
+      health = nextHealth;
+      models = nextModels.filter((m) => m.enabled);
+      if (!models.some((m) => m.model_id === selectedModel))
+        selectedModel = models[0]?.model_id || '';
+      conversations = nextConversations;
+      more = conversations.length === 40;
+      if (!conversationId) conversationId = conversations[0]?.id || '';
+      const nextMessages = conversationId
+        ? await api.getConversationRuns(conversationId, signal)
+        : [];
+      if (!signal.aborted) messages = nextMessages;
     } catch (caught) {
-      if (!signal.aborted) {
-        if (!healthReached) health = null;
-        graph = null;
-        setError(caught);
-      }
+      if (!signal.aborted) setError(caught);
     } finally {
       if (!signal.aborted) {
         loading = false;
         render();
+        schedulePoll();
       }
     }
   }
-  /** 只有窗口展开且运行未结束时，才安排下一次状态查询。 */
-  function schedulePoll() {
-    clearTimeout(pollTimer);
-    if (open && active && !terminal.has(active.status))
-      pollTimer = setTimeout(() => void refreshRun(), 1200);
-  }
-  /** 查询当前运行，成功后继续轮询，失败时保留已有结果供重试。 */
-  async function refreshRun() {
-    if (!active || !open) return;
-    const currentId = active.id;
-    const signal = controller?.signal;
-    try {
-      updateRun(await api.getRun(currentId, signal));
-      error = '';
-      render();
-      schedulePoll();
-    } catch (caught) {
-      if (!signal?.aborted) {
-        setError(caught);
-        render();
-      }
-    }
-  }
-  /** 收起窗口并取消浏览器中的请求等待和轮询，服务端运行仍独立执行。 */
   function close() {
     open = false;
-    loading = false;
-    busy = false;
     controller?.abort();
     clearTimeout(pollTimer);
+    loading = false;
+    busy = false;
     render();
-    root.querySelector('button')?.focus();
+    const launcher = root.querySelector('button[data-runtime="toggle"]');
+    if (launcher instanceof HTMLButtonElement) launcher.focus();
   }
   root.addEventListener('input', (event) => {
-    if (event.target instanceof HTMLTextAreaElement && event.target.id === 'runtime-prompt')
-      draft = event.target.value;
+    if (event.target instanceof HTMLTextAreaElement) draft = event.target.value;
+  });
+  root.addEventListener('change', (event) => {
+    if (event.target instanceof HTMLSelectElement && event.target.name === 'model')
+      selectedModel = event.target.value;
   });
   root.addEventListener('submit', async (event) => {
-    if (!(event.target instanceof HTMLFormElement)) return;
     event.preventDefault();
-    if (busy || !graph || (active && !terminal.has(active.status))) return;
-    if (!draft.trim()) {
-      error = '请输入验证内容。';
-      render();
-      return;
-    }
+    if (busy || loading || activeRun() || !selectedModel || !draft.trim()) return;
     const signal = begin();
     busy = true;
     error = '';
     render();
     try {
-      updateRun(await api.createRun(draft.trim(), signal));
-      schedulePoll();
+      if (!conversationId) {
+        const conversation = await api.createConversation(signal);
+        if (signal.aborted) return;
+        conversationId = conversation.id;
+        conversations.unshift(conversation);
+      }
+      const run = await api.createRun(draft.trim(), selectedModel, conversationId, signal);
+      if (signal.aborted) return;
+      update(run);
+      const current = conversations.find((c) => c.id === conversationId);
+      if (current?.title === '新对话') current.title = draft.trim().slice(0, 48);
+      draft = '';
     } catch (caught) {
-      if (!signal.aborted) setError(caught);
+      if (!signal.aborted) {
+        setError(caught);
+        if (conversationId) {
+          try {
+            const next = await api.getConversationRuns(conversationId, signal);
+            if (!signal.aborted) messages = next;
+          } catch {
+            /* 保留提交错误与草稿，下次刷新可恢复服务端记录。 */
+          }
+        }
+      }
     } finally {
       if (!signal.aborted) {
         busy = false;
         render();
+        schedulePoll();
       }
     }
   });
   root.addEventListener('click', async (event) => {
     if (!(event.target instanceof Element)) return;
+    if (event.target.closest('[data-runtime-link="configure"]')) {
+      close();
+      return;
+    }
     const button = event.target.closest('[data-runtime]');
     if (!(button instanceof HTMLButtonElement) || button.disabled) return;
     const action = button.dataset.runtime;
@@ -188,12 +216,26 @@ export function mountRuntimeConsole() {
     if (action === 'toggle') {
       open = true;
       await load();
-      const input = root.querySelector('#runtime-prompt');
-      if (input instanceof HTMLTextAreaElement) input.focus();
       return;
     }
-    if (action === 'graph-tab' || action === 'history-tab') {
-      historyTab = action === 'history-tab';
+    if (action === 'history') {
+      historyOpen = !historyOpen;
+      render();
+      return;
+    }
+    if (action === 'suggest') {
+      draft = '如何设计一次公平的多模态模型对比？';
+      render();
+      return;
+    }
+    if (busy || loading) return;
+    if (action === 'new') {
+      begin();
+      conversationId = '';
+      messages = [];
+      draft = '';
+      error = '';
+      historyOpen = false;
       render();
       return;
     }
@@ -201,30 +243,38 @@ export function mountRuntimeConsole() {
       await load();
       return;
     }
-    if (action === 'refresh-run') {
-      await refreshRun();
+    if (action === 'experiment' && button.dataset.runId) {
+      const id = button.dataset.runId;
+      close();
+      window.dispatchEvent(new CustomEvent('prism:record-experiment', { detail: id }));
       return;
     }
-    if (busy || loading) return;
     const signal = begin();
     busy = true;
     error = '';
     render();
     try {
+      if (action === 'select' && button.dataset.conversationId) {
+        const next = await api.getConversationRuns(button.dataset.conversationId, signal);
+        if (signal.aborted) return;
+        conversationId = button.dataset.conversationId;
+        messages = next;
+        historyOpen = false;
+      }
       if (action === 'more') {
-        const records = await api.getRuns(history.length, signal);
-        history.push(...records);
-        more = records.length === 20;
+        const next = await api.getConversations(conversations.length, signal);
+        if (signal.aborted) return;
+        for (const item of next)
+          if (!conversations.some((c) => c.id === item.id)) conversations.push(item);
+        more = next.length === 40;
       }
-      if (action === 'select-run' && button.dataset.runId) {
-        updateRun(await api.getRun(button.dataset.runId, signal));
-        historyTab = false;
-        schedulePoll();
+      if (action === 'cancel' && button.dataset.runId) {
+        const run = await api.cancelRun(button.dataset.runId, signal);
+        if (!signal.aborted) update(run);
       }
-      if (action === 'trace' && active) updateRun(await api.verifyTrace(active.id, signal));
-      if (action === 'cancel' && active) {
-        updateRun(await api.cancelRun(active.id, signal));
-        schedulePoll();
+      if (action === 'trace' && button.dataset.runId) {
+        const run = await api.verifyTrace(button.dataset.runId, signal);
+        if (!signal.aborted) update(run);
       }
     } catch (caught) {
       if (!signal.aborted) setError(caught);
@@ -241,6 +291,18 @@ export function mountRuntimeConsole() {
       event.preventDefault();
       close();
     }
+    if (
+      event.key === 'Enter' &&
+      !event.shiftKey &&
+      !event.isComposing &&
+      event.target instanceof HTMLTextAreaElement
+    ) {
+      event.preventDefault();
+      event.target.form?.requestSubmit();
+    }
+  });
+  window.addEventListener('prism:model-connections-changed', () => {
+    if (open) void load();
   });
   window.addEventListener('pagehide', () => {
     controller?.abort();

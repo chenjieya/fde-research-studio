@@ -45,6 +45,21 @@ class WorkspaceTests(PostgresTestCase):
             self.assertEqual(connection.execute("SELECT count(*) AS n FROM model_capabilities").fetchone()["n"], 2)
             self.assertEqual(connection.execute("SELECT count(*) AS n FROM artifact_models").fetchone()["n"], 1)
 
+    def test_language_text_models_and_notes_roundtrip_through_api(self):
+        payload = self.sample.model_dump(mode="json")
+        payload["models"][0]["domain"] = "语言文本"
+        payload["notes"][0]["domain"] = "语言文本"
+        service = RuntimeService(Settings.from_env(), RunRepository(self.database))
+        with TestClient(create_app(service)) as client:
+            saved = client.put("/prism/workspace", json={"expected_revision": 0, "data": payload})
+            self.assertEqual(saved.status_code, 200, saved.text)
+            restored = client.get("/prism/workspace").json()["data"]
+            self.assertEqual(restored, payload)
+            payload["models"][0]["domain"] = "未知领域"
+            rejected = client.put("/prism/workspace", json={"expected_revision": 1, "data": payload})
+            self.assertEqual(rejected.status_code, 422)
+            self.assertEqual(client.get("/prism/workspace").json()["revision"], 1)
+
     def test_stale_writer_cannot_overwrite_cloud_data(self):
         self.repo.save(self.sample, 0)
         with self.assertRaises(RuntimeServiceError) as error:

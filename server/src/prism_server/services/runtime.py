@@ -13,8 +13,10 @@ from langgraph_sdk.client import LangGraphClient
 from prism_server.core.clock import utc_now
 from prism_server.core.config import Settings
 from prism_server.core.exceptions import RuntimeServiceError
+from prism_server.core.secrets import CredentialCipher
 from prism_server.integrations.agent_server import create_agent_client, public_agent_error
 from prism_server.integrations.langsmith import read_trace_url
+from prism_server.repositories.model_connections import ModelConnectionRepository
 from prism_server.repositories.runtime_runs import RunRepository
 from prism_server.schemas.runtime import TERMINAL_STATUSES, RunInput, RunRecord, RunStatus
 
@@ -36,6 +38,7 @@ class RuntimeService:
         self.repository = repository
         self.client_factory = client_factory or partial(create_agent_client, settings)
         self.trace_reader = trace_reader or partial(read_trace_url, settings)
+        self.models = ModelConnectionRepository(repository.database, CredentialCipher(settings.model_encryption_key))
 
     async def initialize(self) -> None:
         """启动时准备数据库表；同步数据库操作放进工作线程。"""
@@ -46,9 +49,9 @@ class RuntimeService:
         settings = self.settings
         return {
             "service": "prism-research-server",
-            "stage": "framework",
+            "stage": "model-chat",
             "graph_id": settings.graph_id,
-            "execution_mode": "connection_check",
+            "execution_mode": "model",
             "agent_public_url": settings.public_api_url,
             "studio_url": "https://smith.langchain.com/studio/?" + urlencode({"baseUrl": settings.public_api_url}),
             "tracing": {
@@ -83,11 +86,16 @@ class RuntimeService:
 
     async def create_run(self, payload: RunInput) -> RunRecord:
         """先记下请求，再通过 SDK 创建线程和运行，方便失败后继续排查。"""
+        connection, _ = await asyncio.to_thread(self.models.resolve, payload.model_id)
+        await self.conversation_runs(payload.conversation_id)
         local_id = str(uuid4())
-        record = await asyncio.to_thread(
-            self.repository.create,
-            RunRecord(id=local_id, graph_id=self.settings.graph_id, input=payload.prompt, status="pending", started_at=utc_now()),
+        record, history_records = await asyncio.to_thread(
+            self.repository.create_turn,
+            RunRecord(id=local_id, graph_id=self.settings.graph_id, input=payload.prompt, status="pending", started_at=utc_now(), conversation_id=payload.conversation_id, model_id=payload.model_id, model_snapshot={"name": connection.name, "provider": connection.provider, "api_model": connection.api_model, "revision": connection.revision, "system_prompt": connection.system_prompt}),
         )
+        history = []
+        for previous in history_records:
+            history.extend([{"role": "user", "content": previous.input}, {"role": "assistant", "content": str(previous.output["message"])}])
         try:
             async with self.client_factory() as client:
                 thread = await client.threads.create(metadata={"prism_run_id": local_id})
@@ -96,9 +104,10 @@ class RuntimeService:
                 run = await client.runs.create(
                     thread_id,
                     self.settings.graph_id,
-                    input={"prompt": payload.prompt, "request_id": local_id},
-                    metadata={"prism_run_id": local_id, "prism_stage": "2.2", "purpose": "connection_check"},
-                    config={"tags": ["prism", "framework-check"]},
+                    input={"prompt": payload.prompt, "request_id": local_id, "history": history},
+                    context={"model_id": payload.model_id, "model_revision": connection.revision, "system_prompt": connection.system_prompt, "tools": []},
+                    metadata={"prism_run_id": local_id, "prism_stage": "2.6", "purpose": "model-chat"},
+                    config={"tags": ["prism", "model-chat"]},
                 )
             return await asyncio.to_thread(
                 self.repository.update, local_id, agent_run_id=run["run_id"], status="running",
@@ -126,7 +135,8 @@ class RuntimeService:
                 if status == "success":
                     state = await client.threads.get_state(record.thread_id)
                     values = state.get("values")
-                    if not isinstance(values, dict) or values.get("execution_mode") != "connection_check":
+                    expected_mode = "model" if record.conversation_id else "connection_check"
+                    if not isinstance(values, dict) or values.get("execution_mode") != expected_mode:
                         raise ValueError("图输出格式不匹配")
                     output = values
                 elif status in {"error", "timeout", "interrupted"}:
@@ -143,6 +153,11 @@ class RuntimeService:
             # 暂时查不到不代表运行失败，保留原状态，之后还可以继续查询。
             logger.warning("查询运行失败：%s", type(exc).__name__)
             raise RuntimeServiceError(502, public_agent_error(exc)) from None
+
+    async def conversation_runs(self, conversation_id: str) -> list[RunRecord]:
+        """恢复页面时补查未完成的运行，浏览器关闭不会丢失已有消息。"""
+        records = await asyncio.to_thread(self.repository.conversation_runs, conversation_id)
+        return [await self.get_run(UUID(record.id)) if record.status not in TERMINAL_STATUSES else record for record in records]
 
     async def cancel_run(self, run_id: UUID) -> RunRecord:
         """请求中断后再查真实状态，不直接假定中断已经完成。"""

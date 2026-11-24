@@ -6,7 +6,7 @@ from urllib.parse import urlparse
 
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field, StrictBool, model_validator
 
-Domain = Literal["图片", "CAD", "视频"]
+Domain = Literal["图片", "CAD", "视频", "语言文本"]
 Stage = Literal["待调研", "研究中", "已验证", "持续跟踪"]
 Capability = Literal["生成编辑", "识别理解"]
 RecordId = Annotated[str, Field(min_length=1, max_length=120, pattern=r"^[a-zA-Z0-9][a-zA-Z0-9_-]*$")]

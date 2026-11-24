@@ -21,6 +21,8 @@ import {
 import { generateReport, renderMarkdown, reportHtml } from './lib/reports.js';
 import { icon, artwork, modelCard } from './components/visuals.js';
 import { mountRuntimeConsole } from './components/runtime-console.js';
+import * as runtimeApi from './lib/runtime-api.js';
+import './chat.css';
 import prismLogo from '../assets/prism.svg';
 
 /**
@@ -178,7 +180,7 @@ function shell() {
     frontier: data.notes.length,
     deliverables: data.artifacts.length || '',
   };
-  app.innerHTML = `<div class="workspace ${mobileNav ? 'nav-open' : ''}"><aside class="sidebar"><a class="brand" href="#overview"><img src="${esc(prismLogo)}" alt="" width="35" height="35"><span>Prism<span class="brand-caption">多模态研究工作台</span></span></a><div class="workspace-label"><span class="workspace-dot">F</span><span>FDE 研究空间</span><span class="personal">个人版</span></div><nav aria-label="工作台导航">${pages.map((key) => `<a href="#${key}" class="nav-item ${page === key ? 'active' : ''}" ${page === key ? 'aria-current="page"' : ''}>${icon(key)}<span>${labels[key]}</span><span class="nav-count">${counts[key]}</span></a>`).join('')}</nav><div class="sidebar-topics"><p class="sidebar-caption">研究方向</p>${domains.map((d, i) => `<button data-action="domain-nav" data-id="${d}" class="topic-nav"><span class="topic-dot topic-${i}"></span>${d === '图片' ? '图像与视觉' : d === 'CAD' ? 'CAD 与空间' : '视频与世界模型'}<span>${data.models.filter((m) => m.domain === d).length}</span></button>`).join('')}</div><div class="sidebar-bottom"><div class="local-status">${icon('check')}<span>记录保存在云端数据库</span></div><div class="backup-actions"><button data-action="backup">${icon('download')}备份</button><button data-action="import">${icon('upload')}恢复</button></div><div class="profile"><span class="avatar">陈</span><div><strong>我的研究空间</strong><span>发现 · 验证 · 交付</span></div><button class="icon-button" data-action="about" aria-label="关于工作台">${icon('info')}</button></div></div></aside><div class="main-shell"><header class="topbar"><div class="breadcrumb"><button class="icon-button mobile-menu" data-action="menu" aria-label="打开导航">${icon('menu')}</button><span>工作空间</span>${icon('chevron')}<strong>${labels[page]}</strong></div><div class="top-actions"><button class="global-search" data-action="search">${icon('search')}<span>搜索研究内容</span><kbd>Ctrl K</kbd></button><span class="prototype-label">在线研究空间</span><span class="small-avatar">陈</span></div></header><main id="main" tabindex="-1">${storageError ? `<div class="error-banner" role="alert">${esc(storageError)}<button data-action="retry-workspace">重新连接</button><button data-action="raw-backup">导出原始记录</button><button data-action="import">恢复备份</button></div>` : ''}${workspaceLoading ? '<section class="empty-state" role="status"><h3>正在连接研究空间…</h3><p>读取线上记录，并检查旧浏览器数据迁移。</p></section>' : storageError ? emptyState('研究空间暂不可用', '请重新连接；旧浏览器数据会在迁移成功后才清理。') : content()}</main><footer class="workspace-footer"><span>Prism Research Studio</span><span>研究记录保存在云端；演示数据保留标记，尚未连接模型推理服务。</span></footer></div></div>`;
+  app.innerHTML = `<div class="workspace ${mobileNav ? 'nav-open' : ''}"><aside class="sidebar"><a class="brand" href="#overview"><img src="${esc(prismLogo)}" alt="" width="35" height="35"><span>Prism<span class="brand-caption">多模态研究工作台</span></span></a><div class="workspace-label"><span class="workspace-dot">F</span><span>FDE 研究空间</span><span class="personal">个人版</span></div><nav aria-label="工作台导航">${pages.map((key) => `<a href="#${key}" class="nav-item ${page === key ? 'active' : ''}" ${page === key ? 'aria-current="page"' : ''}>${icon(key)}<span>${labels[key]}</span><span class="nav-count">${counts[key]}</span></a>`).join('')}</nav><div class="sidebar-topics"><p class="sidebar-caption">研究方向</p>${domains.map((d, i) => `<button data-action="domain-nav" data-id="${d}" class="topic-nav"><span class="topic-dot topic-${i}"></span>${d === '图片' ? '图像与视觉' : d === 'CAD' ? 'CAD 与空间' : d === '视频' ? '视频与世界模型' : '语言文本'}<span>${data.models.filter((m) => m.domain === d).length}</span></button>`).join('')}</div><div class="sidebar-bottom"><div class="local-status">${icon('check')}<span>记录保存在云端数据库</span></div><div class="backup-actions"><button data-action="backup">${icon('download')}备份</button><button data-action="import">${icon('upload')}恢复</button></div><div class="profile"><span class="avatar">陈</span><div><strong>我的研究空间</strong><span>发现 · 验证 · 交付</span></div><button class="icon-button" data-action="about" aria-label="关于工作台">${icon('info')}</button></div></div></aside><div class="main-shell"><header class="topbar"><div class="breadcrumb"><button class="icon-button mobile-menu" data-action="menu" aria-label="打开导航">${icon('menu')}</button><span>工作空间</span>${icon('chevron')}<strong>${labels[page]}</strong></div><div class="top-actions"><button class="global-search" data-action="search">${icon('search')}<span>搜索研究内容</span><kbd>Ctrl K</kbd></button><span class="prototype-label">在线研究空间</span><span class="small-avatar">陈</span></div></header><main id="main" tabindex="-1">${storageError ? `<div class="error-banner" role="alert">${esc(storageError)}<button data-action="retry-workspace">重新连接</button><button data-action="raw-backup">导出原始记录</button><button data-action="import">恢复备份</button></div>` : ''}${workspaceLoading ? '<section class="empty-state" role="status"><h3>正在连接研究空间…</h3><p>读取线上记录，并检查旧浏览器数据迁移。</p></section>' : storageError ? emptyState('研究空间暂不可用', '请重新连接；旧浏览器数据会在迁移成功后才清理。') : content()}</main><footer class="workspace-footer"><span>Prism Research Studio</span><span>研究记录保存在云端；模型可在档案中配置，实验结论由你确认。</span></footer></div></div>`;
 }
 /** 根据当前导航选择对应页面。 */
 function content() {
@@ -194,7 +196,7 @@ function overviewPage() {
   const featured = domains
     .map((d) => data.models.find((m) => m.domain === d))
     .filter((m) => m !== undefined);
-  return `${pageHeading('每一次探索，都有所沉淀。', '连接前沿技术、实验发现与下一份交付。', `<button class="button primary" data-action="new-model">${icon('plus')}记录模型</button>`)}<div class="overview-layout"><div class="overview-main"><section class="focus-banner"><div class="focus-copy"><span class="focus-tag">${icon('spark')}本周研究焦点</span><h2>从设计意图，<br>到可编辑的几何。</h2><p>探索 CAD 生成的下一步：<br>精度、约束，以及真正可用的设计。</p><button class="button hero-button" data-action="${focus ? 'detail' : 'new-model'}" ${focus ? `data-id="${esc(focus.id)}"` : ''}>${focus ? '继续研究' : '开始记录'}${icon('book')}</button></div><div class="focus-visual">${artwork('CAD', true)}<span class="visual-caption">Geometry study / CAD</span></div><span class="focus-issue">研究专题 · CAD</span></section><div class="section-heading"><div><h2>能力探索</h2><span>三个方向，持续深入</span></div><a href="#models">全部模型 ${icon('chevron')}</a></div><div class="model-grid overview-models">${featured.map(modelCard).join('') || emptyState('开始建立模型档案', '记录第一个值得研究的模型。')}</div><div class="section-heading recent-heading"><div><h2>最近的实验</h2><span>让每一个判断都有依据</span></div><a href="#experiments">实验记录 ${icon('chevron')}</a></div><section class="recent-list">${
+  return `${pageHeading('每一次探索，都有所沉淀。', '连接前沿技术、实验发现与下一份交付。', `<button class="button primary" data-action="new-model">${icon('plus')}记录模型</button>`)}<div class="overview-layout"><div class="overview-main"><section class="focus-banner"><div class="focus-copy"><span class="focus-tag">${icon('spark')}本周研究焦点</span><h2>从设计意图，<br>到可编辑的几何。</h2><p>探索 CAD 生成的下一步：<br>精度、约束，以及真正可用的设计。</p><button class="button hero-button" data-action="${focus ? 'detail' : 'new-model'}" ${focus ? `data-id="${esc(focus.id)}"` : ''}>${focus ? '继续研究' : '开始记录'}${icon('book')}</button></div><div class="focus-visual">${artwork('CAD', true)}<span class="visual-caption">Geometry study / CAD</span></div><span class="focus-issue">研究专题 · CAD</span></section><div class="section-heading"><div><h2>能力探索</h2><span>${domains.length} 个方向，持续深入</span></div><a href="#models">全部模型 ${icon('chevron')}</a></div><div class="model-grid overview-models">${featured.map(modelCard).join('') || emptyState('开始建立模型档案', '记录第一个值得研究的模型。')}</div><div class="section-heading recent-heading"><div><h2>最近的实验</h2><span>让每一个判断都有依据</span></div><a href="#experiments">实验记录 ${icon('chevron')}</a></div><section class="recent-list">${
     data.experiments
       .slice(0, 3)
       .map(
@@ -202,7 +204,7 @@ function overviewPage() {
           `<button class="recent-experiment" data-action="experiment-detail" data-id="${esc(e.id)}"><span class="experiment-icon">${icon('experiments')}</span><span class="recent-copy"><strong>${esc(e.title)}${e.demo ? '<span class="demo-label">演示</span>' : ''}</strong><span>${esc(data.models.find((m) => m.id === e.modelId)?.name ?? '')} · ${esc(e.task)}</span></span><span class="recent-date">${esc(e.date.slice(5))}</span>${icon('chevron')}</button>`,
       )
       .join('') || emptyState('还没有实验', '从真实样本和明确的成功标准开始。')
-  }</section></div><aside class="research-aside"><section class="research-pulse"><div class="section-heading compact"><h2>研究脉搏</h2><span class="today-label">${today().slice(5).replace('-', ' / ')}</span></div><div class="pulse-row"><span>已收录模型</span><strong>${String(data.models.length).padStart(2, '0')}<small>个</small></strong></div><div class="pulse-row"><span>实验记录</span><strong>${String(data.experiments.length).padStart(2, '0')}<small>次</small></strong></div><div class="pulse-row"><span>交付成果</span><strong>${String(data.artifacts.length).padStart(2, '0')}<small>份</small></strong></div><div class="domain-spectrum">${domains.map((d, i) => `<span class="spectrum-${i}" style="flex:${Math.max(1, data.models.filter((m) => m.domain === d).length)}"></span>`).join('')}</div><div class="spectrum-legend"><span>图片</span><span>CAD</span><span>视频</span></div></section><section class="field-notes"><div class="section-heading compact"><h2>前沿手记</h2><button class="icon-button" data-action="new-note" aria-label="新增前沿手记">${icon('plus')}</button></div>${
+  }</section></div><aside class="research-aside"><section class="research-pulse"><div class="section-heading compact"><h2>研究脉搏</h2><span class="today-label">${today().slice(5).replace('-', ' / ')}</span></div><div class="pulse-row"><span>已收录模型</span><strong>${String(data.models.length).padStart(2, '0')}<small>个</small></strong></div><div class="pulse-row"><span>实验记录</span><strong>${String(data.experiments.length).padStart(2, '0')}<small>次</small></strong></div><div class="pulse-row"><span>交付成果</span><strong>${String(data.artifacts.length).padStart(2, '0')}<small>份</small></strong></div><div class="domain-spectrum">${domains.map((d, i) => `<span class="spectrum-${i}" style="flex:${Math.max(1, data.models.filter((m) => m.domain === d).length)}"></span>`).join('')}</div><div class="spectrum-legend">${domains.map((d) => `<span>${d}</span>`).join('')}</div></section><section class="field-notes"><div class="section-heading compact"><h2>前沿手记</h2><button class="icon-button" data-action="new-note" aria-label="新增前沿手记">${icon('plus')}</button></div>${
     data.notes
       .slice(0, 3)
       .map(
@@ -325,8 +327,8 @@ function modelForm(id = '') {
   const m = data.models.find((m) => m.id === id);
   formDialog(
     m ? '编辑模型档案' : '记录一个值得研究的模型',
-    '先记录已知信息，再通过实验逐步补齐。',
-    `<div class="form-grid">${input('模型名称 *', 'name', m?.name, 'required maxlength="120" autofocus')}${input('厂商 / 团队', 'vendor', m?.vendor, 'maxlength="120"')}<label class="field"><span>研究领域</span><select name="domain">${domains.map((d) => option(d, d, m?.domain)).join('')}</select></label><label class="field"><span>研究状态</span><select name="stage">${stages.map((s) => option(s, s, m?.stage)).join('')}</select></label></div><fieldset class="capability-field"><legend>能力方向（至少选择一项）</legend>${['生成编辑', '识别理解'].map((c) => `<label><input type="checkbox" name="capabilities" value="${c}" ${m ? (m.capabilities.includes(c) ? 'checked' : '') : 'checked'}>${c}</label>`).join('')}</fieldset>${textarea('能力摘要 *', 'summary', m?.summary, 'required maxlength="1000"')}${input('核心技术路线', 'route', m?.route, 'placeholder="例如：视觉语言模型 / 参数化代码生成" maxlength="300"')}<div class="form-grid">${input('接入 / 部署方式', 'access', m?.access, 'placeholder="未核实可留空" maxlength="300"')}${input('商业许可', 'license', m?.license, 'placeholder="待核实" maxlength="300"')}</div>${input('官方资料 / 论文来源', 'source', m?.source, 'type="url" placeholder="https://…" maxlength="2000"')}${textarea('研究笔记与待验证问题', 'notes', m?.notes, 'maxlength="10000"')}${m?.demo ? '<p class="form-hint">此档案来自示例。保存后将标记为用户记录，事实仍需核实。</p>' : ''}`,
+    '记录研究资料；实际接口地址与密钥在档案详情的「配置接入」设置。',
+    `<div class="form-grid">${input('模型名称 *', 'name', m?.name, 'required maxlength="120" autofocus')}${input('厂商 / 团队', 'vendor', m?.vendor, 'maxlength="120"')}<label class="field"><span>研究领域</span><select name="domain">${domains.map((d) => option(d, d, m?.domain)).join('')}</select></label><label class="field"><span>研究状态</span><select name="stage">${stages.map((s) => option(s, s, m?.stage)).join('')}</select></label></div><fieldset class="capability-field"><legend>能力方向（至少选择一项）</legend>${['生成编辑', '识别理解'].map((c) => `<label><input type="checkbox" name="capabilities" value="${c}" ${m ? (m.capabilities.includes(c) ? 'checked' : '') : 'checked'}>${c}</label>`).join('')}</fieldset>${textarea('能力摘要 *', 'summary', m?.summary, 'required maxlength="1000" placeholder="例如：文本问答、长文摘要与代码生成；复杂推理效果待验证。"')}${input('核心技术路线', 'route', m?.route, 'placeholder="例如：自回归 Transformer / 扩散模型；以公开资料为准，未知可填待核实" maxlength="300"')}<div class="form-grid">${input('接入 / 部署方式', 'access', m?.access, 'placeholder="例如：云端 API / 本地部署 / 公司内网推理服务" maxlength="300"')}${input('商业许可', 'license', m?.license, 'placeholder="待核实" maxlength="300"')}</div>${input('官方资料 / 论文来源', 'source', m?.source, 'type="url" placeholder="https://…" maxlength="2000"')}${textarea('研究笔记与待验证问题', 'notes', m?.notes, 'maxlength="10000"')}${m?.demo ? '<p class="form-hint">此档案来自示例。保存后将标记为用户记录，事实仍需核实。</p>' : ''}`,
     'model',
     id,
   );
@@ -340,16 +342,46 @@ function modelDetail(id) {
   if (!m) return;
   const experiments = data.experiments.filter((e) => e.modelId === id);
   openDialog(
-    `<div class="detail-art ${m.domain === 'CAD' ? 'art-cad' : m.domain === '图片' ? 'art-image' : 'art-video'}">${artwork(m.domain)}<span class="detail-domain">${m.domain} / ${esc(m.route)}</span>${buttonClose('模型详情')}</div><div class="detail-content"><div class="detail-title"><div><p class="model-vendor">${esc(m.vendor)}</p><h2>${esc(m.name)}</h2></div>${stageBadge(m.stage)}</div><p class="detail-summary">${esc(m.summary)}</p><div class="detail-capabilities">${m.capabilities.map((c) => `<span class="model-chip selected">${c}</span>`).join('')}${m.demo ? '<span class="demo-label">示例资料 · 待核实</span>' : '<span class="user-label">用户记录 · 待复核</span>'}</div><dl class="detail-facts"><div><dt>技术路线</dt><dd>${esc(m.route || '待补充')}</dd></div><div><dt>接入与部署</dt><dd>${esc(m.access || '待核实')}</dd></div><div><dt>商业许可</dt><dd>${esc(m.license || '待核实')}</dd></div><div><dt>记录日期</dt><dd>${esc(m.updated)}</dd></div></dl><section class="detail-notes"><h3>研究笔记</h3><p>${esc(m.notes || '还没有研究笔记，记录你的第一个问题。')}</p></section><section class="detail-notes"><h3>相关实验 <span class="muted">${experiments.length}</span></h3>${experiments.map((e) => `<button class="detail-experiment" data-action="experiment-detail" data-id="${esc(e.id)}">${icon('experiments')}<span>${esc(e.title)}</span>${e.demo ? '<span class="demo-label">演示</span>' : ''}${icon('chevron')}</button>`).join('') || '<p class="muted">尚无实验记录，暂不能判断实际效果。</p>'}</section>${sourceLink(m.source)}</div><div class="modal-footer"><button class="button" data-action="new-experiment" data-id="${esc(id)}">${icon('experiments')}记录实验</button><button class="button primary" data-action="edit-model" data-id="${esc(id)}">${icon('edit')}编辑档案</button></div>`,
+    `<div class="detail-art ${m.domain === 'CAD' ? 'art-cad' : m.domain === '图片' ? 'art-image' : m.domain === '视频' ? 'art-video' : 'art-text'}">${artwork(m.domain)}<span class="detail-domain">${m.domain} / ${esc(m.route)}</span>${buttonClose('模型详情')}</div><div class="detail-content"><div class="detail-title"><div><p class="model-vendor">${esc(m.vendor)}</p><h2>${esc(m.name)}</h2></div>${stageBadge(m.stage)}</div><p class="detail-summary">${esc(m.summary)}</p><div class="detail-capabilities">${m.capabilities.map((c) => `<span class="model-chip selected">${c}</span>`).join('')}${m.demo ? '<span class="demo-label">示例资料 · 待核实</span>' : '<span class="user-label">用户记录 · 待复核</span>'}</div><dl class="detail-facts"><div><dt>技术路线</dt><dd>${esc(m.route || '待补充')}</dd></div><div><dt>接入与部署</dt><dd>${esc(m.access || '待核实')}</dd></div><div><dt>商业许可</dt><dd>${esc(m.license || '待核实')}</dd></div><div><dt>记录日期</dt><dd>${esc(m.updated)}</dd></div></dl><section class="detail-notes"><h3>研究笔记</h3><p>${esc(m.notes || '还没有研究笔记，记录你的第一个问题。')}</p></section><section class="detail-notes"><h3>相关实验 <span class="muted">${experiments.length}</span></h3>${experiments.map((e) => `<button class="detail-experiment" data-action="experiment-detail" data-id="${esc(e.id)}">${icon('experiments')}<span>${esc(e.title)}</span>${e.demo ? '<span class="demo-label">演示</span>' : ''}${icon('chevron')}</button>`).join('') || '<p class="muted">尚无实验记录，暂不能判断实际效果。</p>'}</section>${sourceLink(m.source)}</div><div class="modal-footer"><button class="button" data-action="model-connection" data-id="${esc(id)}">${icon('models')}配置接入</button><button class="button" data-action="new-experiment" data-id="${esc(id)}">${icon('experiments')}记录实验</button><button class="button primary" data-action="edit-model" data-id="${esc(id)}">${icon('edit')}编辑档案</button></div>`,
     'detail-modal',
   );
+}
+/** 在模型档案内配置可调用的接口；密钥输入始终留空，不读回服务器密文。 @param {string} id */
+async function modelConnectionForm(id) {
+  const model = data.models.find((m) => m.id === id);
+  if (!model) return;
+  const marker = uid('connection');
+  openDialog(
+    `<div class="modal-header"><div><h2>配置模型接入</h2><p>${esc(model.name)}</p></div>${buttonClose('接入配置')}</div><div class="form-body" id="${marker}">正在读取接入配置…</div>`,
+    'form-modal',
+  );
+  try {
+    const connections = await runtimeApi.getModelConnections();
+    if (!modal.open || !modal.querySelector(`#${marker}`)) return;
+    const c = connections.find((item) => item.model_id === id);
+    formDialog(
+      '配置模型接入',
+      esc(model.name),
+      `<div class="connection-intro"><span class="eyebrow">MODEL CONNECTION</span><p>将研究档案连接到可运行的模型，在运行工作室开始对话。</p></div><div class="form-grid"><label class="field"><span>适配协议</span><select name="provider"><option value="openai" ${c?.provider !== 'anthropic' ? 'selected' : ''}>OpenAI 兼容</option><option value="anthropic" ${c?.provider === 'anthropic' ? 'selected' : ''}>Anthropic</option></select></label>${input('API 模型名 *', 'api_model', c?.api_model, 'required maxlength="200" placeholder="接口要求的模型标识"')}</div>${input('Base URL *', 'base_url', c?.base_url || 'https://api.openai.com/v1', 'required type="url" maxlength="2000"')}<p class="form-hint">OpenAI 兼容接口通常以 /v1 结尾；Anthropic 官方为 https://api.anthropic.com。</p>${input(c?.api_key_configured ? 'API Key（已保存，留空保留）' : 'API Key（无密钥的本地接口可留空）', 'api_key', '', 'type="password" autocomplete="new-password" maxlength="8192"')}${c?.api_key_configured ? '<label class="acknowledge"><input type="checkbox" name="clear_api_key">清除已保存的 API Key</label>' : ''}${textarea('系统提示词', 'system_prompt', c?.system_prompt ?? '你是严谨的多模态模型研究助手。区分事实、推断与待验证问题。', 'maxlength="20000" rows="4"')}<div class="form-grid">${input('温度（可选）', 'temperature', c?.temperature == null ? '' : String(c.temperature), 'type="number" min="0" max="2" step="any" placeholder="留空使用模型默认值"')}${input('最大输出 Token *', 'max_tokens', String(c?.max_tokens ?? 2048), 'required type="number" min="1" max="131072" step="1"')}${input('模型请求超时（秒）*', 'timeout_seconds', String(c?.timeout_seconds ?? 120), 'required type="number" min="5" max="600" step="1"')}</div><label class="acknowledge"><input type="checkbox" name="enabled" ${c?.enabled !== false ? 'checked' : ''}>在运行工作室启用此模型</label><input type="hidden" name="expected_revision" value="${c?.revision ?? 0}"><p class="form-hint">密钥加密保存于服务端，不加入研究备份。保存配置不会发起模型请求。</p>`,
+      'model-connection',
+      id,
+    );
+  } catch (error) {
+    if (modal.querySelector(`#${marker}`)) {
+      const node = modal.querySelector(`#${marker}`);
+      if (node)
+        node.textContent =
+          error instanceof Error ? error.message : '接入配置加载失败，请关闭后重试。';
+    }
+  }
 }
 /**
  * 创建或编辑实验，演示记录转为真实记录前需要明确确认。
  * @param {string} [modelId]
  * @param {string} [id]
+ * @param {import('./types').RuntimeRun | null} [run]
  */
-function experimentForm(modelId = '', id = '') {
+function experimentForm(modelId = '', id = '', run = null) {
   if (!data.models.length) {
     toast('请先创建模型档案。');
     modelForm();
@@ -359,10 +391,42 @@ function experimentForm(modelId = '', id = '') {
   formDialog(
     e ? '编辑实验记录' : '记录一次真实的验证',
     '此处记录已执行的实验，不会调用模型。请保留失败案例。',
-    `${input('实验标题 *', 'title', e?.title, 'required autofocus maxlength="200"')}<div class="form-grid"><label class="field"><span>被测模型</span><select name="modelId">${data.models.map((m) => option(m.id, m.name, e?.modelId || modelId)).join('')}</select></label><label class="field"><span>任务类型</span><select name="task">${['识别理解', '生成编辑'].map((t) => option(t, t, e?.task)).join('')}</select></label></div>${input('样本集 / 数据说明 *', 'dataset', e?.dataset, 'required maxlength="1000" placeholder="记录样本来源、范围与版本"')}<div class="form-grid">${input('样本数量 *', 'sampleSize', String(e?.sampleSize ?? ''), 'type="number" min="1" max="10000000" step="1" required')}${input('成功数量 *', 'successCount', String(e?.successCount ?? ''), 'type="number" min="0" max="10000000" step="1" required')}${input('单次耗时（秒，可选）', 'latency', e?.latency == null ? '' : String(e.latency), 'type="number" min="0" step="any"')}${input('单次成本（元，可选）', 'cost', e?.cost == null ? '' : String(e.cost), 'type="number" min="0" step="any"')}</div>${textarea('成功标准与实验结论 *', 'conclusion', e?.conclusion, 'required maxlength="10000"')}${textarea('限制与失败案例 *', 'limitations', e?.limitations, 'required maxlength="10000"')}${e?.demo ? '<label class="acknowledge"><input type="checkbox" name="confirm-real" required>我已将演示内容替换为真实实验记录。</label>' : ''}`,
+    `${input('实验标题 *', 'title', e?.title, 'required autofocus maxlength="200"')}<div class="form-grid"><label class="field"><span>被测模型</span><select name="modelId">${data.models.map((m) => option(m.id, m.name, e?.modelId || modelId)).join('')}</select></label><label class="field"><span>任务类型</span><select name="task">${['识别理解', '生成编辑'].map((t) => option(t, t, e?.task)).join('')}</select></label></div>${input('样本集 / 数据说明 *', 'dataset', e?.dataset, 'required maxlength="1000" placeholder="例如：10 条客服问题，覆盖退款和物流；或本轮聊天的测试问题"')}<div class="form-grid">${input('样本数量 *', 'sampleSize', String(e?.sampleSize ?? ''), 'type="number" min="1" max="10000000" step="1" required')}${input('成功数量 *', 'successCount', String(e?.successCount ?? ''), 'type="number" min="0" max="10000000" step="1" required')}${input('单次耗时（秒，可选）', 'latency', e?.latency == null ? '' : String(e.latency), 'type="number" min="0" step="any"')}${input('单次成本（元，可选）', 'cost', e?.cost == null ? '' : String(e.cost), 'type="number" min="0" step="any"')}</div><p class="form-hint">样本数量是本次实际测试条数，成功数量是按你定义的标准判定达标的条数。当前由你评价填写，不自动判分；接口调用成功不代表回答质量达标。</p>${textarea('成功标准与实验结论 *', 'conclusion', e?.conclusion, 'required maxlength="10000"')}${textarea('限制与失败案例 *', 'limitations', e?.limitations, 'required maxlength="10000"')}${e?.demo ? '<label class="acknowledge"><input type="checkbox" name="confirm-real" required>我已将演示内容替换为真实实验记录。</label>' : ''}`,
     'experiment',
     id,
   );
+  if (run) {
+    const form = modal.querySelector('form');
+    if (!(form instanceof HTMLFormElement)) return;
+    form.setAttribute('data-run-id', run.id);
+    const defaults = {
+      title: `对话验证 · ${run.model_snapshot?.name || '模型'}`,
+      dataset: '运行工作室 · 单轮对话（参见原始输入与输出）',
+      sampleSize: '1',
+      latency:
+        typeof run.output?.latency_seconds === 'number' ? String(run.output.latency_seconds) : '',
+    };
+    for (const [name, value] of Object.entries(defaults)) {
+      const control = form.elements.namedItem(name);
+      if (control instanceof HTMLInputElement) control.value = value;
+    }
+    const modelSelect = form.elements.namedItem('modelId');
+    if (modelSelect instanceof HTMLSelectElement) {
+      modelSelect.disabled = true;
+      form.insertAdjacentHTML(
+        'beforeend',
+        `<input type="hidden" name="modelId" value="${esc(modelId)}">`,
+      );
+    }
+    form
+      .querySelector('.form-body')
+      ?.insertAdjacentHTML(
+        'afterbegin',
+        `<details class="experiment-source" open><summary>本轮原始输入与输出 · ${esc(run.model_snapshot?.api_model || '')}</summary><h4>输入</h4><pre>${esc(run.input)}</pre><h4>输出</h4><pre>${esc(run.output?.message || '')}</pre><p>请按实际标准填写成功数量、结论和限制；成本可留空。</p></details>`,
+      );
+    const subtitle = modal.querySelector('.modal-header p');
+    if (subtitle) subtitle.textContent = '确认本轮模型结果，补充评价后加入实验对比。';
+  }
 }
 /**
  * 展示实验样本、结果和限制，演示实验会单独标记。
@@ -375,6 +439,20 @@ function experimentDetail(id) {
     `<div class="modal-header"><div><p class="eyebrow">实验记录 ${e.demo ? ' / 虚构演示' : ''}</p><h2>${esc(e.title)}</h2></div>${buttonClose('实验')}</div><div class="detail-content"><p class="detail-summary">${esc(data.models.find((m) => m.id === e.modelId)?.name ?? '')} · ${esc(e.task)} · ${esc(e.date)}</p>${e.demo ? '<p class="warning-note">此实验为虚构演示，所有数字不能作为模型评估或选型依据。</p>' : ''}<dl class="detail-facts"><div><dt>样本集</dt><dd>${esc(e.dataset)}</dd></div><div><dt>成功 / 总数</dt><dd>${e.successCount} / ${e.sampleSize}（${((e.successCount / e.sampleSize) * 100).toFixed(1)}%）</dd></div><div><dt>单次耗时</dt><dd>${e.latency === null ? '未记录' : e.latency + ' 秒'}</dd></div><div><dt>单次成本</dt><dd>${e.cost === null ? '未记录' : e.cost + ' 元'}</dd></div></dl><section class="detail-notes"><h3>结论与成功标准</h3><p>${esc(e.conclusion)}</p></section><section class="detail-notes"><h3>限制与失败案例</h3><p>${esc(e.limitations)}</p></section></div><div class="modal-footer"><button class="button primary" data-action="edit-experiment" data-id="${esc(id)}">${icon('edit')}编辑记录</button></div>`,
     'detail-modal',
   );
+  const source = document.createElement('div');
+  source.className = 'experiment-source-slot';
+  modal.querySelector('.detail-content')?.append(source);
+  void runtimeApi
+    .getExperimentSource(id)
+    .then((run) => {
+      if (!source.isConnected || !modal.open || !run) return;
+      source.innerHTML = `<details class="experiment-source"><summary>关联模型运行 · ${esc(run.model_snapshot?.name || '')}</summary><p>${esc(run.started_at)} / ${esc(run.model_snapshot?.provider || '')} / ${esc(run.model_snapshot?.api_model || '')}</p><h4>系统提示词</h4><pre>${esc(run.model_snapshot?.system_prompt || '未设置')}</pre><h4>输入</h4><pre>${esc(run.input)}</pre><h4>输出</h4><pre>${esc(run.output?.message || '')}</pre></details>`;
+    })
+    .catch((error) => {
+      if (source.isConnected)
+        source.textContent =
+          error instanceof Error ? `运行来源读取失败：${error.message}` : '运行来源读取失败。';
+    });
 }
 /**
  * 创建或编辑研究手记。
@@ -498,6 +576,10 @@ function hasUnsavedDocument() {
 }
 /** 关闭弹窗前检查文档是否有未保存修改。 */
 function closeDialog() {
+  if (saving) {
+    toast('正在保存，请稍候。');
+    return;
+  }
   if (!hasUnsavedDocument() || confirm('文档有尚未保存的修改。确定关闭并放弃这些修改吗？'))
     modal.close();
 }
@@ -578,6 +660,10 @@ document.addEventListener('click', async (event) => {
   }
   if (action === 'detail') {
     modelDetail(id);
+    return;
+  }
+  if (action === 'model-connection') {
+    await modelConnectionForm(id);
     return;
   }
   if (action === 'new-experiment') {
@@ -704,7 +790,7 @@ document.addEventListener('click', async (event) => {
   }
   if (action === 'about')
     openDialog(
-      `<div class="modal-header"><div><h2>你的研究，有一个安放的地方。</h2><p>Prism · 多模态研究工作台</p></div>${buttonClose('关于')}</div><div class="detail-content"><p>记录图片、CAD 和视频模型，追踪前沿技术，保存实验依据，整理可交付的研究成果。</p><h3>当前版本</h3><p>研究记录保存在服务器 PostgreSQL 数据库。首次加载会将旧浏览器记录迁入数据库，成功后清理旧存储。备份与恢复通过 JSON 文件完成。</p><p>文档生成使用模板，尚未接入模型推理与自动联网搜集。示例档案不代表最新模型列表，演示实验不代表实际成绩。</p><button class="button" data-action="backup">${icon('download')}导出研究备份</button></div>`,
+      `<div class="modal-header"><div><h2>你的研究，有一个安放的地方。</h2><p>Prism · 多模态研究工作台</p></div>${buttonClose('关于')}</div><div class="detail-content"><p>记录图片、CAD、视频和语言文本模型，追踪前沿技术，保存实验依据，整理可交付的研究成果。</p><h3>当前版本</h3><p>研究记录保存在服务器 PostgreSQL 数据库。首次加载会将旧浏览器记录迁入数据库，成功后清理旧存储。备份与恢复通过 JSON 文件完成。</p><p>文档生成使用模板，尚未接入模型推理与自动联网搜集。示例档案不代表最新模型列表，演示实验不代表实际成绩。</p><button class="button" data-action="backup">${icon('download')}导出研究备份</button></div>`,
       'detail-modal',
     );
 });
@@ -727,6 +813,22 @@ document.addEventListener('input', (event) => {
   }
 });
 document.addEventListener('change', async (event) => {
+  if (
+    event.target instanceof HTMLSelectElement &&
+    event.target.name === 'provider' &&
+    event.target.form?.getAttribute('data-form') === 'model-connection'
+  ) {
+    const base = event.target.form.elements.namedItem('base_url');
+    const temperature = event.target.form.elements.namedItem('temperature');
+    const anthropic = event.target.value === 'anthropic';
+    if (
+      base instanceof HTMLInputElement &&
+      ['', 'https://api.openai.com/v1', 'https://api.anthropic.com'].includes(base.value)
+    )
+      base.value = anthropic ? 'https://api.anthropic.com' : 'https://api.openai.com/v1';
+    if (temperature instanceof HTMLInputElement) temperature.max = anthropic ? '1' : '2';
+    return;
+  }
   const target = event.target;
   if (!(target instanceof HTMLSelectElement)) return;
   if (target.id === 'capability-filter') {
@@ -766,6 +868,38 @@ document.addEventListener('submit', async (event) => {
   const field = (key) => String(fields.get(key) ?? '').trim();
   const existingId = form.getAttribute('data-id') ?? '';
   try {
+    if (formType === 'model-connection') {
+      if (saving) return;
+      const provider = field('provider');
+      if (provider !== 'openai' && provider !== 'anthropic') throw new Error('请选择适配协议。');
+      saving = true;
+      const submit = form.querySelector('button[type="submit"]');
+      if (submit instanceof HTMLButtonElement) submit.disabled = true;
+      try {
+        await runtimeApi.saveModelConnection(existingId, {
+          provider,
+          api_model: field('api_model'),
+          base_url: field('base_url'),
+          api_key: field('api_key'),
+          clear_api_key: fields.get('clear_api_key') === 'on',
+          enabled: fields.get('enabled') === 'on',
+          system_prompt: field('system_prompt'),
+          temperature: field('temperature') ? Number(field('temperature')) : null,
+          max_tokens: Number(field('max_tokens')),
+          timeout_seconds: Number(field('timeout_seconds')),
+          expected_revision: Number(field('expected_revision')),
+        });
+        const secret = form.elements.namedItem('api_key');
+        if (secret instanceof HTMLInputElement) secret.value = '';
+        window.dispatchEvent(new Event('prism:model-connections-changed'));
+        modal.close();
+        toast('接入配置已保存，可在运行工作室选择此模型。');
+      } finally {
+        saving = false;
+        if (submit instanceof HTMLButtonElement) submit.disabled = false;
+      }
+      return;
+    }
     if (formType === 'model') {
       const capabilities = fields
         .getAll('capabilities')
@@ -847,7 +981,23 @@ document.addEventListener('submit', async (event) => {
         demo: false,
         date: today(),
       };
-      if (
+      const sourceRunId = form.getAttribute('data-run-id');
+      if (sourceRunId) {
+        if (saving) return;
+        saving = true;
+        const submit = form.querySelector('button[type="submit"]');
+        if (submit instanceof HTMLButtonElement) submit.disabled = true;
+        try {
+          await runtimeApi.confirmExperiment(sourceRunId, e);
+          const snapshot = await getWorkspace();
+          data = snapshot.data;
+          revision = snapshot.revision;
+          location.hash = 'experiments';
+        } finally {
+          saving = false;
+          if (submit instanceof HTMLButtonElement) submit.disabled = false;
+        }
+      } else if (
         !(await commit((next) => {
           const index = next.experiments.findIndex((item) => item.id === e.id);
           if (index >= 0) next.experiments[index] = e;
@@ -968,6 +1118,10 @@ modal.addEventListener('click', (event) => {
   }
 });
 modal.addEventListener('cancel', (event) => {
+  if (saving) {
+    event.preventDefault();
+    return;
+  }
   if (hasUnsavedDocument()) {
     event.preventDefault();
     closeDialog();
@@ -990,6 +1144,27 @@ function route() {
   window.scrollTo({ top: 0, behavior: 'instant' });
 }
 window.addEventListener('hashchange', route);
+window.addEventListener('prism:record-experiment', async (event) => {
+  if (!(event instanceof CustomEvent) || typeof event.detail !== 'string') return;
+  if (saving || workspaceLoading || storageError) {
+    toast('请等待研究空间加载完成后重试。');
+    return;
+  }
+  if (modal.open) {
+    toast('请先关闭当前编辑窗口。');
+    return;
+  }
+  try {
+    const run = await runtimeApi.getRun(event.detail);
+    if (run.status !== 'success' || run.output?.execution_mode !== 'model' || !run.model_id)
+      throw new Error('仅成功的模型结果可以录入实验。');
+    if (!data.models.some((m) => m.id === run.model_id))
+      throw new Error('原模型档案已删除，请先恢复档案。');
+    if (!modal.open) experimentForm(run.model_id, '', run);
+  } catch (error) {
+    toast(error instanceof Error ? error.message : '无法读取模型结果。');
+  }
+});
 route();
 mountRuntimeConsole();
 void loadWorkspace();

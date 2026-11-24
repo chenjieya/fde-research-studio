@@ -4,22 +4,26 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from prism_server.schemas.workspace import RecordId
+
 RunStatus = Literal["pending", "running", "success", "error", "timeout", "interrupted"]
 TERMINAL_STATUSES = frozenset({"success", "error", "timeout", "interrupted"})
 
 
 class RunInput(BaseModel):
-    """前端创建运行时提交的内容，当前只接收验证文字。"""
+    """发送一轮消息，明确选择模型和会话。"""
 
     model_config = ConfigDict(extra="forbid")
-    prompt: str = Field(min_length=1, max_length=4000)
+    prompt: str = Field(min_length=1, max_length=20000)
+    model_id: RecordId
+    conversation_id: str = Field(min_length=1, max_length=120)
 
     @field_validator("prompt")
     @classmethod
     def nonempty_prompt(cls, value: str) -> str:
         text = value.strip()
         if not text:
-            raise ValueError("请输入验证内容")
+            raise ValueError("请输入消息内容")
         return text
 
 
@@ -40,4 +44,13 @@ class RunRecord(BaseModel):
     # 配置了 LangSmith key 还不算核验成功，需要实际查到对应记录。
     trace_status: Literal["unverified", "verified"] = "unverified"
     trace_url: str | None = None
+    conversation_id: str | None = None
+    model_id: str | None = None
+    model_snapshot: dict[str, object] | None = None
 
+
+class Conversation(BaseModel):
+    id: str
+    title: str
+    created_at: str
+    updated_at: str

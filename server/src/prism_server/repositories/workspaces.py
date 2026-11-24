@@ -2,13 +2,15 @@
 
 import hashlib
 import json
+from datetime import UTC, datetime
+from uuid import uuid4
 
 from psycopg import Connection, sql
 from psycopg.types.json import Jsonb
 
 from prism_server.core.exceptions import RuntimeServiceError
 from prism_server.db.postgres import PostgresDatabase
-from prism_server.schemas.workspace import Workspace, WorkspaceSnapshot
+from prism_server.schemas.workspace import Experiment, Workspace, WorkspaceSnapshot
 
 WORKSPACE_ID = "default"
 # 左侧是前端字段，右侧是数据库列名；保留原来的 JSON 备份格式。
@@ -30,6 +32,31 @@ class WorkspaceRepository:
 
     def __init__(self, database: PostgresDatabase):
         self.database = database
+
+    def confirm_run_experiment(self, run_id: str, payload: Experiment) -> Experiment:
+        """用户确认后，在一个事务中录入实验、来源与空间版本；重复提交返回原记录。"""
+        with self.database.connect() as connection:
+            connection.execute("SELECT id FROM workspaces WHERE id=%s FOR UPDATE", (WORKSPACE_ID,))
+            existing = connection.execute("SELECT experiment_id FROM experiment_run_links WHERE run_id=%s AND workspace_id=%s", (run_id, WORKSPACE_ID)).fetchone()
+            if existing:
+                row = connection.execute("SELECT * FROM experiments WHERE workspace_id=%s AND id=%s", (WORKSPACE_ID, existing["experiment_id"])).fetchone()
+                return Experiment(**{name: row[column] for name, column in EXPERIMENT_COLUMNS.items()})
+            run = connection.execute("SELECT * FROM runtime_runs WHERE id=%s AND workspace_id=%s", (run_id, WORKSPACE_ID)).fetchone()
+            if not run:
+                raise RuntimeServiceError(404, "运行记录不存在")
+            if run["status"] != "success" or not run["output"] or run["output"].get("execution_mode") != "model":
+                raise RuntimeServiceError(409, "只能将成功的模型运行录入实验")
+            if not connection.execute("SELECT id FROM models WHERE workspace_id=%s AND id=%s", (WORKSPACE_ID, run["model_id"])).fetchone():
+                raise RuntimeServiceError(409, "原模型档案已删除，无法录入实验")
+            experiment = Experiment(**{**payload.model_dump(), "id": str(uuid4()), "modelId": run["model_id"], "date": datetime.now(UTC).date(), "demo": False})
+            values = experiment.model_dump()
+            connection.execute(sql.SQL("INSERT INTO experiments(workspace_id,{},position) VALUES (%s,{},(SELECT COALESCE(MAX(position),-1)+1 FROM experiments WHERE workspace_id=%s))").format(
+                sql.SQL(",").join(map(sql.Identifier, EXPERIMENT_COLUMNS.values())),
+                sql.SQL(",").join(sql.Placeholder() for _ in EXPERIMENT_COLUMNS),
+            ), [WORKSPACE_ID, *(values[name] for name in EXPERIMENT_COLUMNS), WORKSPACE_ID])
+            connection.execute("INSERT INTO experiment_run_links(workspace_id,experiment_id,run_id) VALUES (%s,%s,%s)", (WORKSPACE_ID, experiment.id, run_id))
+            connection.execute("UPDATE workspaces SET revision=revision+1,updated_at=now() WHERE id=%s", (WORKSPACE_ID,))
+            return experiment
 
     @staticmethod
     def _read(connection: Connection, revision: int) -> WorkspaceSnapshot:

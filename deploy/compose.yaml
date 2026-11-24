@@ -24,6 +24,7 @@ services:
       # SDK 调用同一容器中的 Agent Server，使用容器内的 8000 端口。
       PRISM_AGENT_API_URL: http://127.0.0.1:8000
       PRISM_DATABASE_URL: ${PRISM_DATABASE_URL:?请设置业务 PostgreSQL 连接串}
+      PRISM_MODEL_ENCRYPTION_KEY: ${PRISM_MODEL_ENCRYPTION_KEY:?请配置并备份模型密钥加密根密钥}
       DATABASE_URI: postgres://prism:${POSTGRES_PASSWORD:?请设置 POSTGRES_PASSWORD}@postgres:5432/prism
       REDIS_URI: redis://redis:6379
       LANGGRAPH_CLOUD_LICENSE_KEY: ${LANGGRAPH_CLOUD_LICENSE_KEY:?请配置官方 Agent Server 生产许可}

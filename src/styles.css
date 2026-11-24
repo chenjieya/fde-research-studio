@@ -654,6 +654,9 @@ main:focus {
 .overview-models {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
+.overview-models:where(:has(> .model-card:nth-child(4))) {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
 .model-card {
   background: #fff;
   border: 1px solid #e5e9f0;
@@ -681,6 +684,9 @@ main:focus {
 }
 .art-video {
   background: #e6f0ed;
+}
+.art-text {
+  background: #f0eadd;
 }
 .study {
   width: 100%;
@@ -929,6 +935,10 @@ main:focus {
 }
 .spectrum-2 {
   background: #89b5a8;
+}
+.spectrum-3,
+.topic-3 {
+  background: #b9a17c;
 }
 .spectrum-legend {
   display: flex;
@@ -1589,6 +1599,36 @@ dialog {
   background: #fff;
   box-shadow: 0 24px 100px #16244133;
   overflow: auto;
+}
+/* 弹窗、聊天窗口及其中的长文本使用同一套轻量滚动条。 */
+:where(dialog, dialog *, .runtime-panel, .runtime-panel *)::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+:where(dialog, dialog *, .runtime-panel, .runtime-panel *)::-webkit-scrollbar-track,
+:where(dialog, dialog *, .runtime-panel, .runtime-panel *)::-webkit-scrollbar-corner {
+  background: transparent;
+}
+:where(dialog, dialog *, .runtime-panel, .runtime-panel *)::-webkit-scrollbar-thumb {
+  min-height: 32px;
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: #bac7d9;
+  background-clip: padding-box;
+}
+:where(dialog, dialog *, .runtime-panel, .runtime-panel *)::-webkit-scrollbar-thumb:hover {
+  background-color: #8fa3bf;
+}
+:where(dialog, dialog *, .runtime-panel, .runtime-panel *)::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
+}
+@supports not selector(::-webkit-scrollbar) {
+  :where(dialog, dialog *, .runtime-panel, .runtime-panel *) {
+    scrollbar-width: thin;
+    scrollbar-color: #bac7d9 transparent;
+  }
 }
 dialog::backdrop {
   background: #1b29476b;

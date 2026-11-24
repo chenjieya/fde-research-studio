@@ -17,6 +17,9 @@ dependencies = [
   "httpx>=0.27,<1",
   "pydantic>=2.7,<3",
   "psycopg[binary]>=3.2,<4",
+  "langchain-openai>=1,<2",
+  "langchain-anthropic>=1,<2",
+  "cryptography>=46",
 ]
 
 [dependency-groups]

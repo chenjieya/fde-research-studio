@@ -1,6 +1,11 @@
 """研究图的数据格式：外部输入、外部输出，以及节点共享的内部状态。"""
 
-from typing import Literal, TypedDict
+from typing import Literal, NotRequired, TypedDict
+
+
+class ChatTurn(TypedDict):
+    role: Literal["user", "assistant"]
+    content: str
 
 
 class ResearchInput(TypedDict):
@@ -8,21 +13,24 @@ class ResearchInput(TypedDict):
 
     prompt: str
     request_id: str
+    history: NotRequired[list[ChatTurn]]
 
 
 class ResearchOutput(TypedDict):
     """图执行结束后，返回给调用方的字段。"""
 
     message: str
-    echo: str
     request_id: str
-    execution_mode: Literal["connection_check"]
+    execution_mode: Literal["model"]
+    latency_seconds: float
+    usage: dict
 
 
 class ResearchState(ResearchInput, total=False):
     """节点之间共享的数据；输入先写入，结果字段由节点补上。"""
 
     message: str
-    echo: str
-    execution_mode: Literal["connection_check"]
+    execution_mode: Literal["model"]
+    latency_seconds: float
+    usage: dict
 

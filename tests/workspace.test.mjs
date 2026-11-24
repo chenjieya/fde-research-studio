@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { isWorkspace, safeUrl, escapeHtml } from '../src/lib/workspace.js';
 import { generateReport, renderMarkdown, reportHtml } from '../src/lib/reports.js';
+import { modelCard } from '../src/components/visuals.js';
 
 // 仅用于契约与报告测试，生产页面不引用这些记录。
 const model = {
@@ -57,6 +58,29 @@ const initialWorkspace = {
 
 test('示例档案满足完整备份契约', () => {
   assert.equal(isWorkspace(initialWorkspace), true);
+});
+
+test('语言文本模型和手记可备份恢复，并保留在研究报告中', () => {
+  const data = structuredClone(initialWorkspace);
+  data.models[0] = { ...data.models[0], domain: '语言文本', demo: false };
+  data.notes[0] = {
+    ...data.notes[0],
+    domain: '语言文本',
+    body: '语言模型的推理与文本生成测试',
+    demo: false,
+  };
+  data.experiments[0].demo = false;
+  const restored = JSON.parse(JSON.stringify(data));
+  assert.equal(isWorkspace(restored), true);
+  const card = modelCard(restored.models[0]);
+  assert.match(card, /art-text/);
+  assert.match(card, /text-study/);
+  const report = generateReport('技术调研简报', '语言模型研究', [model.id], restored);
+  assert.match(report, /语言文本/);
+  assert.match(report, /语言模型的推理与文本生成测试/);
+  assert.match(report, /测试实验/);
+  restored.models[0].domain = '未知领域';
+  assert.equal(isWorkspace(restored), false);
 });
 test('拒绝损坏、重复 ID、悬空引用及不合法的实验数字', () => {
   for (const mutate of [

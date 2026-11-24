@@ -151,10 +151,19 @@ export async function getRuns(offset = 0, signal) {
 /**
  * 提交验证文字，创建一次新的图运行。
  * @param {string} prompt
+ * @param {string} modelId
+ * @param {string} conversationId
  * @param {AbortSignal} [signal]
  */
-export async function createRun(prompt, signal) {
-  const data = await request('runs', { method: 'POST', body: JSON.stringify({ prompt }) }, signal);
+export async function createRun(prompt, modelId, conversationId, signal) {
+  const data = await request(
+    'runs',
+    {
+      method: 'POST',
+      body: JSON.stringify({ prompt, model_id: modelId, conversation_id: conversationId }),
+    },
+    signal,
+  );
   if (!isRun(data)) throw new Error('新运行记录格式不匹配。');
   return data;
 }
@@ -186,5 +195,84 @@ export async function cancelRun(id, signal) {
 export async function verifyTrace(id, signal) {
   const data = await request(`runs/${encodeURIComponent(id)}/trace`, { method: 'POST' }, signal);
   if (!isRun(data)) throw new Error('监测核验响应格式不匹配。');
+  return data;
+}
+
+/** @param {unknown} value @returns {value is import('../types').ModelConnection} */
+function isModelConnection(value) {
+  return (
+    object(value) &&
+    typeof value.model_id === 'string' &&
+    typeof value.name === 'string' &&
+    (value.provider === 'openai' || value.provider === 'anthropic') &&
+    typeof value.api_model === 'string' &&
+    typeof value.base_url === 'string' &&
+    typeof value.enabled === 'boolean' &&
+    typeof value.system_prompt === 'string' &&
+    typeof value.api_key_configured === 'boolean' &&
+    Number.isInteger(value.revision) &&
+    typeof value.max_tokens === 'number' &&
+    typeof value.timeout_seconds === 'number' &&
+    (value.temperature === null || typeof value.temperature === 'number')
+  );
+}
+/** @param {AbortSignal} [signal] */
+export async function getModelConnections(signal) {
+  const data = await request('models', {}, signal);
+  if (!Array.isArray(data) || !data.every(isModelConnection))
+    throw new Error('模型接入配置格式不匹配。');
+  return data;
+}
+/** @param {string} id @param {import('../types').ModelConnectionInput} payload @param {AbortSignal} [signal] */
+export async function saveModelConnection(id, payload, signal) {
+  const data = await request(
+    `models/${encodeURIComponent(id)}`,
+    { method: 'PUT', body: JSON.stringify(payload) },
+    signal,
+  );
+  if (!isModelConnection(data)) throw new Error('模型配置保存响应格式不匹配。');
+  return data;
+}
+/** @param {unknown} value @returns {value is import('../types').Conversation} */
+function isConversation(value) {
+  return (
+    object(value) &&
+    typeof value.id === 'string' &&
+    typeof value.title === 'string' &&
+    typeof value.created_at === 'string' &&
+    typeof value.updated_at === 'string'
+  );
+}
+/** @param {number} [offset] @param {AbortSignal} [signal] */
+export async function getConversations(offset = 0, signal) {
+  const data = await request(`conversations?offset=${offset}`, {}, signal);
+  if (!Array.isArray(data) || !data.every(isConversation)) throw new Error('对话列表格式不匹配。');
+  return data;
+}
+/** @param {AbortSignal} [signal] */
+export async function createConversation(signal) {
+  const data = await request('conversations', { method: 'POST' }, signal);
+  if (!isConversation(data)) throw new Error('新对话格式不匹配。');
+  return data;
+}
+/** @param {string} id @param {AbortSignal} [signal] */
+export async function getConversationRuns(id, signal) {
+  const data = await request(`conversations/${encodeURIComponent(id)}/runs`, {}, signal);
+  if (!Array.isArray(data) || !data.every(isRun)) throw new Error('对话记录格式不匹配。');
+  return data;
+}
+/** @param {string} id @param {import('../types').Experiment} payload */
+export async function confirmExperiment(id, payload) {
+  const data = await request(`runs/${encodeURIComponent(id)}/experiment`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+  if (!object(data) || typeof data.id !== 'string') throw new Error('实验保存响应格式不匹配。');
+  return data.id;
+}
+/** @param {string} id @param {AbortSignal} [signal] */
+export async function getExperimentSource(id, signal) {
+  const data = await request(`experiments/${encodeURIComponent(id)}/source`, {}, signal);
+  if (data !== null && !isRun(data)) throw new Error('实验来源格式不匹配。');
   return data;
 }

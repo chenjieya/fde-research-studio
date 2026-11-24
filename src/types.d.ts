@@ -1,5 +1,5 @@
 // 前端数据类型：研究记录沿用 JSON 备份字段，运行记录对应后端 API。
-export type Domain = '图片' | 'CAD' | '视频';
+export type Domain = '图片' | 'CAD' | '视频' | '语言文本';
 export type Stage = '待调研' | '研究中' | '已验证' | '持续跟踪';
 export type Page = 'overview' | 'models' | 'experiments' | 'frontier' | 'deliverables';
 export type ReportKind = '研究周报' | '模型对比报告' | 'FDE 方案草稿' | '技术调研简报';
@@ -108,4 +108,41 @@ export interface RuntimeRun {
   /** 后端实际查到 LangSmith 记录后才会变为 verified。 */
   trace_status: 'unverified' | 'verified';
   trace_url: string | null;
+  conversation_id: string | null;
+  model_id: string | null;
+  model_snapshot: {
+    name?: string;
+    provider?: string;
+    api_model?: string;
+    system_prompt?: string;
+  } | null;
+}
+/** 接入配置独立存储，研究备份不携带凭据。 */
+export interface ModelConnection {
+  model_id: string;
+  name: string;
+  provider: 'openai' | 'anthropic';
+  api_model: string;
+  base_url: string;
+  enabled: boolean;
+  system_prompt: string;
+  temperature: number | null;
+  max_tokens: number;
+  timeout_seconds: number;
+  revision: number;
+  api_key_configured: boolean;
+}
+export type ModelConnectionInput = Omit<
+  ModelConnection,
+  'model_id' | 'name' | 'revision' | 'api_key_configured'
+> & {
+  api_key: string;
+  clear_api_key: boolean;
+  expected_revision: number;
+};
+export interface Conversation {
+  id: string;
+  title: string;
+  created_at: string;
+  updated_at: string;
 }
