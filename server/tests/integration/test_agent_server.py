@@ -87,6 +87,19 @@ class AgentServerIntegrationTests(unittest.TestCase):
                     self.assertIn("model", [node["id"] for node in compiled["nodes"]])
                     state = await sdk.threads.get_state(second["thread_id"])
                     self.assertNotIn("integration-fake-key", str(state))
+                    assistants = await sdk.assistants.search(graph_id="prism_research")
+                    schemas = await sdk.assistants.get_schemas(assistants[0]["assistant_id"])
+                    self.assertIn("prompt", schemas["input_schema"]["properties"])
+                    self.assertFalse(schemas["context_schema"].get("required"))
+                    studio_thread = await sdk.threads.create()
+                    studio_result = await sdk.runs.wait(
+                        studio_thread["thread_id"],
+                        "prism_research",
+                        input={"prompt": "Studio 只选择模型 ID，不填写内部配置版本"},
+                        context={"model_id": "model-a"},
+                    )
+                    self.assertEqual(studio_result["execution_mode"], "model")
+                    self.assertTrue(studio_result["request_id"])
 
             asyncio.run(check_sdk())
             changed = client.put(
@@ -104,3 +117,39 @@ class AgentServerIntegrationTests(unittest.TestCase):
             self.assertNotIn("private-provider-error", str(failed))
             self.assertNotIn("integration-fake-key", client.get("/prism/runtime/models").text)
             self.assertNotIn("integration-fake-key", client.get("/prism/workspace").text)
+            # Studio 留空 Context：只有一个启用模型时可直接运行，不要求用户填写内部编号。
+            restored = client.put(
+                "/prism/runtime/models/model-a",
+                json={
+                    "provider": "openai",
+                    "api_model": "test-chat",
+                    "base_url": provider_url + "/v1",
+                    "expected_revision": 2,
+                },
+            )
+            self.assertEqual(restored.status_code, 200)
+            disabled = client.put(
+                "/prism/runtime/models/model-b",
+                json={
+                    "provider": "anthropic",
+                    "api_model": "test-chat",
+                    "base_url": provider_url,
+                    "enabled": False,
+                    "expected_revision": 1,
+                },
+            )
+            self.assertEqual(disabled.status_code, 200)
+
+            async def studio_defaults():
+                async with get_client(url=url, api_key=None) as sdk:
+                    for context in (None, {}):
+                        thread = await sdk.threads.create()
+                        result = await sdk.runs.wait(
+                            thread["thread_id"],
+                            "prism_research",
+                            input={"prompt": "Studio 默认上下文验证"},
+                            context=context,
+                        )
+                        self.assertEqual(result["execution_mode"], "model")
+
+            asyncio.run(studio_defaults())

@@ -1,6 +1,9 @@
 """研究图的数据格式：外部输入、外部输出，以及节点共享的内部状态。"""
 
-from typing import Literal, NotRequired, TypedDict
+from typing import Literal, NotRequired
+
+# Pydantic 在 Python 3.11 下生成 Schema，需要使用这个兼容版本。
+from typing_extensions import TypedDict
 
 
 class ChatTurn(TypedDict):
@@ -12,7 +15,7 @@ class ResearchInput(TypedDict):
     """调用整张图时传入的字段。"""
 
     prompt: str
-    request_id: str
+    request_id: NotRequired[str]
     history: NotRequired[list[ChatTurn]]
 
 
