@@ -1,0 +1,75 @@
+# 部署配置：前端 Nginx、后端 Agent Server，以及 Agent Server 自用的数据库和 Redis。
+# 业务数据库单独使用 database.compose.yaml。先 pnpm build，再构建这里的镜像。
+# Agent Server 的官方生产运行需要有效许可，实际值由部署环境的 .env 提供。
+# 当前无业务登录，端口仅绑定本机，远程访问前须完成应用鉴权与 HTTPS 接入。
+services:
+  web:
+    build:
+      context: ..
+      dockerfile: deploy/web.Dockerfile
+    ports:
+      - "127.0.0.1:4178:80"
+    depends_on:
+      agent:
+        condition: service_healthy
+    restart: unless-stopped
+
+  agent:
+    image: prism-agent:local
+    build:
+      context: ..
+      dockerfile: deploy/Agent.Dockerfile
+    env_file: ../.env
+    environment:
+      # SDK 调用同一容器中的 Agent Server，使用容器内的 8000 端口。
+      PRISM_AGENT_API_URL: http://127.0.0.1:8000
+      PRISM_DATABASE_URL: ${PRISM_DATABASE_URL:?请设置业务 PostgreSQL 连接串}
+      DATABASE_URI: postgres://prism:${POSTGRES_PASSWORD:?请设置 POSTGRES_PASSWORD}@postgres:5432/prism
+      REDIS_URI: redis://redis:6379
+      LANGGRAPH_CLOUD_LICENSE_KEY: ${LANGGRAPH_CLOUD_LICENSE_KEY:?请配置官方 Agent Server 生产许可}
+    ports:
+      - "127.0.0.1:2024:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/ok')"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
+  postgres:
+    # 保存 Agent Server 的线程等运行数据，不是 prism_research 业务库。
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: prism
+      POSTGRES_DB: prism
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?请设置 POSTGRES_PASSWORD}
+    volumes:
+      - agent-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U prism -d prism"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - agent-redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  agent-postgres:
+  agent-redis:

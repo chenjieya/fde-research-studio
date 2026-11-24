@@ -1,0 +1,30 @@
+# 后端部署配置：模型、实验、手记和交付物使用的独立 PostgreSQL。
+name: prism-research-db
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: prism_admin
+      POSTGRES_DB: prism_research
+      POSTGRES_PASSWORD: ${PRISM_POSTGRES_ADMIN_PASSWORD:?请配置数据库管理员密码}
+      POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256
+    ports:
+      # 只允许宿主机访问；远程客户端通过 SSH 隧道连接。
+      - "127.0.0.1:${PRISM_POSTGRES_PORT:-15433}:5432"
+    volumes:
+      # 数据放进命名卷，重建或重启容器后仍然保留。
+      - research-postgres:/var/lib/postgresql/data
+    command: ["postgres", "-c", "max_connections=40", "-c", "shared_buffers=64MB"]
+    healthcheck:
+      # 数据库能接受连接后，Compose 才把它标为健康。
+      test: ["CMD-SHELL", "pg_isready -U prism_admin -d prism_research"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    mem_limit: 384m
+    cpus: 0.5
+    restart: unless-stopped
+volumes:
+  research-postgres:
+    name: prism-research-postgres
