@@ -6,9 +6,24 @@ from mock_provider import mock_provider
 from prism_server.graphs.research.context import ResearchContext
 from prism_server.graphs.research.graph import graph
 from prism_server.schemas.models import ConnectionRecord
+from pydantic import ValidationError
 
 
 class GraphTests(unittest.TestCase):
+    def test_invalid_nested_state_and_context_are_rejected_before_model_resolution(self):
+        cases = [
+            ({"prompt": "测试", "history": [{"role": "tool", "content": "内容"}]}, {}),
+            ({"prompt": "测试", "history": [{"role": "user", "content": 123}]}, {}),
+            ({"prompt": "测试"}, {"model_id": "model-a", "model_revision": True}),
+            ({"prompt": "测试"}, {"model_id": "model-a", "model_revision": 0}),
+            ({"prompt": "测试"}, {"system_prompt": "x" * 20001}),
+        ]
+        with patch("prism_server.graphs.research.nodes.model.connection_repository") as repository:
+            for state, context in cases:
+                with self.subTest(context_fields=list(context)), self.assertRaises(ValidationError):
+                    asyncio.run(graph.ainvoke(state, context=context))
+            repository.assert_not_called()
+
     def test_studio_input_output_schemas_include_nested_chat_history(self):
         input_schema = graph.get_input_jsonschema()
         output_schema = graph.get_output_jsonschema()
@@ -98,7 +113,8 @@ class GraphTests(unittest.TestCase):
             ):
                 asyncio.run(
                     graph.ainvoke(
-                        {"prompt": "测试", "request_id": "test"}, context=ResearchContext("test", 1)
+                        {"prompt": "测试", "request_id": "test"},
+                        context=ResearchContext(model_id="test", model_revision=1),
                     )
                 )
 
@@ -107,7 +123,7 @@ class GraphTests(unittest.TestCase):
             asyncio.run(
                 graph.ainvoke(
                     {"prompt": "测试", "request_id": "test"},
-                    context=ResearchContext("test", 1, tools=["unknown"]),
+                    context=ResearchContext(model_id="test", model_revision=1, tools=["unknown"]),
                 )
             )
 
@@ -116,7 +132,8 @@ class GraphTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 asyncio.run(
                     graph.ainvoke(
-                        {"prompt": prompt, "request_id": "test"}, context=ResearchContext("test", 1)
+                        {"prompt": prompt, "request_id": "test"},
+                        context=ResearchContext(model_id="test", model_revision=1),
                     )
                 )
 

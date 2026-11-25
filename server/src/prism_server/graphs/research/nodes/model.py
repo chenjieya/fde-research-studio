@@ -42,12 +42,6 @@ def resolve_model(context: ResearchContext) -> tuple[ConnectionRecord, str]:
                 f"有多个启用模型，请在 Studio 的 Context 中填写 model_id，或从工作台选择模型后运行。可选：{choices}"
             )
         model_id = enabled[0].model_id
-    if context.model_revision is not None and (
-        not isinstance(context.model_revision, int)
-        or isinstance(context.model_revision, bool)
-        or context.model_revision < 1
-    ):
-        raise ValueError("model_revision 必须是正整数；Studio 中可以留空使用当前配置。")
     return repository.resolve(model_id, context.model_revision)
 
 
@@ -55,27 +49,9 @@ async def model_node(
     state: ResearchState, runtime: Runtime[ResearchContext], config: RunnableConfig
 ) -> ResearchOutput:
     context = runtime.context or ResearchContext()
-    if context.tools:
-        raise ValueError("本阶段尚未接入工具。")
-    prompt = state.get("prompt", "")
-    if not isinstance(prompt, str) or not prompt.strip() or len(prompt) > 20000:
-        raise ValueError("消息必须为 1 到 20000 字符的非空文字。")
-    history = state.get("history", [])
-    if (
-        not isinstance(history, list)
-        or len(history) > 80
-        or len(context.system_prompt or "") > 20000
-    ):
-        raise ValueError("对话上下文超过限制，请新建对话。")
-    if any(
-        not isinstance(turn, dict)
-        or turn.get("role") not in {"user", "assistant"}
-        or not isinstance(turn.get("content"), str)
-        for turn in history
-    ):
-        raise ValueError("对话历史格式不合法。")
-    if sum(len(turn["content"]) for turn in history) + len(prompt) > 200000:
-        raise ValueError("对话上下文超过限制，请新建对话。")
+    # 字段类型、长度和历史格式由 Pydantic 状态/上下文模型统一检查。
+    prompt = state.prompt
+    history = state.history
     connection, api_key = await asyncio.to_thread(resolve_model, context)
     system_prompt = (
         connection.system_prompt if context.system_prompt is None else context.system_prompt
@@ -85,9 +61,9 @@ async def model_node(
         messages.append(SystemMessage(content=system_prompt))
     for turn in history:
         messages.append(
-            HumanMessage(content=turn["content"])
-            if turn["role"] == "user"
-            else AIMessage(content=turn["content"])
+            HumanMessage(content=turn.content)
+            if turn.role == "user"
+            else AIMessage(content=turn.content)
         )
     messages.append(HumanMessage(content=prompt.strip()))
     started = perf_counter()
@@ -117,10 +93,10 @@ async def model_node(
     )
     if not text.strip():
         raise RuntimeError("模型未返回文字内容，请检查模型是否支持文本对话或增大输出上限。")
-    return {
-        "message": text,
-        "request_id": state.get("request_id") or str(uuid4()),
-        "execution_mode": "model",
-        "latency_seconds": round(perf_counter() - started, 3),
-        "usage": response.usage_metadata or {},
-    }
+    return ResearchOutput(
+        message=text,
+        request_id=state.request_id or str(uuid4()),
+        execution_mode="model",
+        latency_seconds=round(perf_counter() - started, 3),
+        usage=response.usage_metadata or {},
+    )

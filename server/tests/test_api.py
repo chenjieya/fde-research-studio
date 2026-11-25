@@ -1,4 +1,3 @@
-from dataclasses import replace
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
@@ -28,7 +27,7 @@ class ApiTests(PostgresTestCase):
         self.sdk_context.__aenter__ = AsyncMock(return_value=self.sdk)
         self.sdk_context.__aexit__ = AsyncMock(return_value=False)
         self.service = RuntimeService(
-            replace(Settings.from_env(), model_encryption_key=Fernet.generate_key().decode()), repo,
+            Settings.from_env().model_copy(update={"model_encryption_key": Fernet.generate_key().decode()}), repo,
             client_factory=lambda: self.sdk_context,
         )
         self.client = TestClient(create_app(self.service))
@@ -77,7 +76,7 @@ class ApiTests(PostgresTestCase):
         health = self.client.get("/prism/runtime/health").json()
         self.assertFalse(health["tracing"]["verified"])
         created = self.client.post("/prism/runtime/runs", json=self.run_payload).json()
-        with patch.object(self.service, "settings", replace(self.service.settings, tracing_enabled=False, tracing_key_configured=False)):
+        with patch.object(self.service, "settings", self.service.settings.model_copy(update={"tracing_enabled": False, "tracing_key_configured": False})):
             self.assertEqual(self.client.post(f"/prism/runtime/runs/{created['id']}/trace").status_code, 409)
 
     def test_query_failure_preserves_remote_running_state(self):
@@ -100,13 +99,13 @@ class ApiTests(PostgresTestCase):
         created = self.client.post("/prism/runtime/runs", json=self.run_payload).json()
         trace_url = "https://smith.langchain.com/public/test-run/r"
         with (
-            patch.object(self.service, "settings", replace(self.service.settings, tracing_enabled=True, tracing_key_configured=True)),
+            patch.object(self.service, "settings", self.service.settings.model_copy(update={"tracing_enabled": True, "tracing_key_configured": True})),
             patch.object(self.service, "trace_reader", side_effect=RuntimeError("not-yet-reported")),
         ):
             self.assertEqual(self.client.post(f"/prism/runtime/runs/{created['id']}/trace").status_code, 502)
         self.assertEqual(self.client.get("/prism/runtime/runs").json()[0]["trace_status"], "unverified")
         with (
-            patch.object(self.service, "settings", replace(self.service.settings, tracing_enabled=True, tracing_key_configured=True)),
+            patch.object(self.service, "settings", self.service.settings.model_copy(update={"tracing_enabled": True, "tracing_key_configured": True})),
             patch.object(self.service, "trace_reader", return_value=trace_url),
         ):
             result = self.client.post(f"/prism/runtime/runs/{created['id']}/trace")
