@@ -17,6 +17,11 @@ class RunRepository:
     def initialize(self) -> None:
         self.database.initialize()
 
+    def save_model_error(self, run_id: str, model_id: str, message: str) -> None:
+        """仅节点的已脱敏错误进入公开记录；Studio 的独立请求没有记录则不更新。"""
+        with self.database.connect() as connection:
+            connection.execute("UPDATE runtime_runs SET error=%s WHERE id=%s AND model_id=%s AND workspace_id='default' AND status IN ('pending','running')", (message, run_id, model_id))
+
     @staticmethod
     def record(row: dict) -> RunRecord:
         """把数据库行转成接口记录，时间统一转为带时区的字符串。"""
@@ -48,8 +53,8 @@ class RunRepository:
                     raise RuntimeServiceError(409, "本段对话较长，请新建对话继续；历史记录会保留。")
                 connection.execute("UPDATE chat_sessions SET updated_at=now(), title=CASE WHEN title='新对话' THEN %s ELSE title END WHERE id=%s", (record.input[:48], record.conversation_id))
             row = connection.execute(
-                "INSERT INTO runtime_runs(id, graph_id, input, status, started_at, conversation_id, model_id, model_snapshot) VALUES (%s, %s, %s, %s, %s, %s, %s, %s) RETURNING *",
-                (record.id, record.graph_id, record.input, record.status, record.started_at, record.conversation_id, record.model_id, Jsonb(record.model_snapshot) if record.model_snapshot else None),
+                "INSERT INTO runtime_runs(id, graph_id, input, status, started_at, conversation_id, model_id, model_snapshot, input_media) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING *",
+                (record.id, record.graph_id, record.input, record.status, record.started_at, record.conversation_id, record.model_id, Jsonb(record.model_snapshot) if record.model_snapshot else None, Jsonb([asset.model_dump() for asset in record.input_media])),
             ).fetchone()
             return self.record(row), history
 

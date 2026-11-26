@@ -98,10 +98,11 @@ export interface RuntimeRun {
   id: string;
   graph_id: string;
   input: string;
+  input_media: MediaAsset[];
   status: 'pending' | 'running' | 'success' | 'error' | 'timeout' | 'interrupted';
   thread_id: string | null;
   agent_run_id: string | null;
-  output: Record<string, unknown> | null;
+  output: (Record<string, unknown> & { media?: MediaAsset[] }) | null;
   error: string | null;
   started_at: string;
   finished_at: string | null;
@@ -121,20 +122,25 @@ export interface RuntimeRun {
 export interface ModelConnection {
   model_id: string;
   name: string;
-  provider: 'openai' | 'anthropic';
+  provider: ModelProvider;
   api_model: string;
   base_url: string;
   enabled: boolean;
+  input_modalities: ('image' | 'video')[];
+  generation_mode: GenerationMode;
+  generation: GenerationOptions;
+  supported_modes: GenerationMode[];
   system_prompt: string;
   temperature: number | null;
   max_tokens: number;
   timeout_seconds: number;
+  qwen_thinking: 'off' | 'on' | 'default';
   revision: number;
   api_key_configured: boolean;
 }
 export type ModelConnectionInput = Omit<
   ModelConnection,
-  'model_id' | 'name' | 'revision' | 'api_key_configured'
+  'model_id' | 'name' | 'revision' | 'api_key_configured' | 'supported_modes'
 > & {
   api_key: string;
   clear_api_key: boolean;
@@ -145,4 +151,52 @@ export interface Conversation {
   title: string;
   created_at: string;
   updated_at: string;
+}
+
+export type ModelProvider =
+  | 'openai'
+  | 'anthropic'
+  | 'qwen'
+  | 'nvidia_cosmos'
+  | 'openai_image'
+  | 'qwen_image'
+  | 'seedance'
+  | 'wan'
+  | 'krea'
+  | 'moss_image'
+  | 'minimax_image';
+export interface ProviderDefinition {
+  id: ModelProvider;
+  label: string;
+  base_url: string;
+  api_model: string;
+  modes: GenerationMode[];
+  hint: string;
+  documentation: string;
+  timeout_seconds: number;
+}
+export type GenerationMode =
+  'text2image' | 'image2image' | 'text2video' | 'image2video' | 'video2video';
+export interface GenerationOptions {
+  resolution: string;
+  num_frames: number;
+  num_inference_steps: number;
+  fps: number;
+  seed: number | null;
+  image_size: string;
+  quality: 'auto' | 'low' | 'medium' | 'high';
+  video_resolution: '480p' | '720p' | '1080p';
+  aspect_ratio: '1:1' | '16:9' | '9:16' | '4:3' | '3:4' | '3:2' | '2:3';
+  duration: number;
+  audio: boolean;
+  creativity: 'raw' | 'low' | 'medium' | 'high';
+  negative_prompt: string;
+}
+export interface MediaAsset {
+  id: string;
+  kind: 'image' | 'video';
+  mime_type: string;
+  filename: string;
+  size: number;
+  url: string;
 }

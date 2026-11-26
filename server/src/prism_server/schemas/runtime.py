@@ -4,6 +4,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from prism_server.schemas.media import GenerationMode, MediaAsset, MediaId
 from prism_server.schemas.workspace import RecordId
 
 RunStatus = Literal["pending", "running", "success", "error", "timeout", "interrupted"]
@@ -17,6 +18,8 @@ class RunInput(BaseModel):
     prompt: str = Field(min_length=1, max_length=20000)
     model_id: RecordId
     conversation_id: str = Field(min_length=1, max_length=120)
+    attachment_ids: list[MediaId] = Field(default_factory=list, max_length=6)
+    generation_mode: GenerationMode | None = None
 
     @field_validator("prompt")
     @classmethod
@@ -34,6 +37,7 @@ class RunRecord(BaseModel):
     id: str
     graph_id: str
     input: str
+    input_media: list[MediaAsset] = Field(default_factory=list)
     status: RunStatus
     thread_id: str | None = None
     agent_run_id: str | None = None

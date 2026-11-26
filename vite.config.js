@@ -9,8 +9,8 @@ export default defineConfig(({ mode }) => {
     '/api': {
       target: env.PRISM_AGENT_API_URL || 'http://127.0.0.1:2024',
       changeOrigin: true,
-      proxyTimeout: 35000,
-      timeout: 35000,
+      proxyTimeout: 120000,
+      timeout: 120000,
       rewrite: (path) => path.replace(/^\/api(?=\/)/, '/prism'),
     },
   };

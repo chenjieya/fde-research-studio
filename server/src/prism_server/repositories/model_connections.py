@@ -54,6 +54,11 @@ class ModelConnectionRepository:
             if (existing["revision"] if existing else 0) != payload.expected_revision:
                 raise RuntimeServiceError(409, "接入配置已被修改，请重新打开后再保存")
             encrypted = existing["api_key_ciphertext"] if existing else None
+            if encrypted and not secret and not payload.clear_api_key:
+                previous = self.record({**existing, "name": model["name"]})
+                families = {"openai_image": "openai", "qwen_image": "qwen", "wan": "qwen"}
+                if families.get(previous.provider, previous.provider) != families.get(payload.provider, payload.provider):
+                    raise RuntimeServiceError(422, "切换厂商时请填写新厂商的 API Key，或勾选清除旧密钥；系统不会把旧密钥发给其他厂商。")
             if payload.clear_api_key:
                 encrypted = None
             elif secret:

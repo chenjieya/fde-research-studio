@@ -1,6 +1,7 @@
 """显式执行的端到端验收；使用真实 Agent Server、SDK、适配器和隔离 PostgreSQL。"""
 
 import asyncio
+import base64
 import os
 import time
 import unittest
@@ -14,7 +15,7 @@ from runtime_fixture import agent_fixture
 class AgentServerIntegrationTests(unittest.TestCase):
     def test_model_switch_history_failure_and_confirmed_experiment(self):
         with (
-            agent_fixture() as (url, provider_url, requests, _, _),
+            agent_fixture() as (url, provider_url, requests, database, _),
             httpx.Client(base_url=url, timeout=30) as client,
         ):
             for model_id, provider in (("model-a", "openai"), ("model-b", "anthropic")):
@@ -153,3 +154,57 @@ class AgentServerIntegrationTests(unittest.TestCase):
                         self.assertEqual(result["execution_mode"], "model")
 
             asyncio.run(studio_defaults())
+
+            # 同一真实 Agent Server 验证二进制上传、视觉请求、Cosmos 媒体结果及恢复。
+            png = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/a9sAAAAASUVORK5CYII=")
+            uploaded = client.post("/prism/runtime/media?filename=sample.png", content=png, headers={"Content-Type": "image/png"})
+            self.assertEqual(uploaded.status_code, 201, uploaded.text)
+            image = uploaded.json()
+
+            def media_run(mode=None, attachment_ids=None):
+                sid = client.post("/prism/runtime/conversations").json()["id"]
+                response = client.post("/prism/runtime/runs", json={"model_id": "model-a", "conversation_id": sid, "prompt": "multimodal acceptance", "attachment_ids": attachment_ids or [], "generation_mode": mode})
+                self.assertEqual(response.status_code, 201, response.text)
+                record = response.json()
+                for _ in range(100):
+                    record = client.get(f"/prism/runtime/runs/{record['id']}").json()
+                    if record["status"] not in {"pending", "running"}:
+                        break
+                    time.sleep(0.2)
+                self.assertEqual(record["status"], "success", record)
+                self.assertEqual(client.get(f"/prism/runtime/conversations/{sid}/runs").json()[0], record)
+                return record
+
+            visual = media_run(attachment_ids=[image["id"]])
+            self.assertEqual(visual["input_media"][0]["id"], image["id"])
+            self.assertEqual(requests[-1]["body"]["messages"][-1]["content"][1]["type"], "image_url")
+            configured = client.put("/prism/runtime/models/model-a", json={"provider": "nvidia_cosmos", "api_model": "nvidia/cosmos3-nano", "base_url": provider_url + "/v1/cosmos/nvidia/cosmos3-nano", "api_key": "integration-fake-key", "expected_revision": 3})
+            self.assertEqual(configured.status_code, 200, configured.text)
+            for mode, ids, kind in (("text2image", [], "image"), ("image2video", [image["id"]], "video")):
+                generated = media_run(mode, ids)
+                asset = generated["output"]["media"][0]
+                self.assertEqual(asset["kind"], kind)
+                media = client.get("/prism/runtime/media/" + asset["id"])
+                self.assertEqual(media.status_code, 200)
+                self.assertGreater(len(media.content), 0)
+                self.assertNotIn("b64_", str(generated))
+                with database.connect() as connection:
+                    self.assertTrue(connection.execute("SELECT size > 0 AS stored FROM media_assets WHERE id=%s", (asset["id"],)).fetchone()["stored"])
+
+            # 同一个运行窗口通过原生图片 / 异步视频协议执行，不再误用 chat/completions。
+            for revision, provider, model, mode, base in (
+                (4, "openai_image", "gpt-image-1.5", "text2image", provider_url + "/v1"),
+                (5, "qwen_image", "qwen-image-2.0-pro", "text2image", provider_url),
+                (6, "minimax_image", "MiniMax-H3-Image", "text2image", provider_url + "/v1"),
+                (7, "seedance", "doubao-seedance-2-0-260128", "image2video", provider_url),
+                (8, "wan", "wan3.0-video-prime", "image2video", provider_url),
+                (9, "krea", "krea-2/medium", "text2image", provider_url),
+            ):
+                response = client.put("/prism/runtime/models/model-a", json={"provider": provider, "api_model": model, "base_url": base, "api_key": "integration-fake-key", "expected_revision": revision})
+                self.assertEqual(response.status_code, 200, response.text)
+                generated = media_run(mode, [image["id"]] if mode == "image2video" else [])
+                self.assertEqual(generated["output"]["media"][0]["kind"], "video" if mode == "image2video" else "image")
+                if provider in {"seedance", "wan", "krea"}:
+                    task_id = generated["output"]["provider_task_id"]
+                    with database.connect() as connection:
+                        self.assertEqual(connection.execute("SELECT remote_id FROM generation_jobs WHERE request_id=%s", (generated["id"],)).fetchone()["remote_id"], task_id)

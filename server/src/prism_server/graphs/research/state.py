@@ -4,11 +4,14 @@ from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, field_validator, model_validator
 
+from prism_server.schemas.media import GenerationMode, MediaAsset, MediaId
+
 
 class ChatTurn(BaseModel):
     model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
     role: Literal["user", "assistant"]
     content: str = Field(min_length=1, max_length=200000)
+    attachment_ids: list[MediaId] = Field(default_factory=list, max_length=6)
 
 
 class ResearchInput(BaseModel):
@@ -18,6 +21,8 @@ class ResearchInput(BaseModel):
     prompt: str = Field(min_length=1, max_length=20000)
     request_id: str = Field(default="", max_length=120)
     history: list[ChatTurn] = Field(default_factory=list, max_length=80)
+    attachment_ids: list[MediaId] = Field(default_factory=list, max_length=6)
+    generation_mode: GenerationMode | None = None
 
     @field_validator("prompt")
     @classmethod
@@ -42,6 +47,8 @@ class ResearchOutput(BaseModel):
     execution_mode: Literal["model"]
     latency_seconds: float = Field(ge=0, allow_inf_nan=False)
     usage: dict[str, JsonValue]
+    media: list[MediaAsset] = Field(default_factory=list, max_length=6)
+    provider_task_id: str | None = None
 
 
 class ResearchState(ResearchInput):
@@ -51,3 +58,5 @@ class ResearchState(ResearchInput):
     execution_mode: Literal["model"] | None = None
     latency_seconds: float | None = Field(default=None, ge=0, allow_inf_nan=False)
     usage: dict[str, JsonValue] = Field(default_factory=dict)
+    media: list[MediaAsset] = Field(default_factory=list)
+    provider_task_id: str | None = None

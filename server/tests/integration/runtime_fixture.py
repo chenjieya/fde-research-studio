@@ -35,7 +35,7 @@ def stop_process(process):
 
 
 @contextmanager
-def agent_fixture(*, tracing: bool = False):
+def agent_fixture(*, tracing: bool = False, generated_media=None):
     url = os.environ["PRISM_TEST_DATABASE_URL"]
     database = PostgresDatabase(url, schema="test_" + uuid4().hex)
     database.initialize()
@@ -47,7 +47,7 @@ def agent_fixture(*, tracing: bool = False):
     try:
         with (
             tempfile.TemporaryDirectory(prefix="prism-agent-acceptance-") as folder,
-            mock_provider() as (provider_url, requests),
+            mock_provider(generated_media=generated_media) as (provider_url, requests),
             ExitStack() as processes,
         ):
             temp = Path(folder)

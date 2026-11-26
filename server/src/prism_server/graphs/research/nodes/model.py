@@ -1,7 +1,9 @@
 """从运行上下文选择模型，把已完成的对话历史送入真实适配器。"""
 
 import asyncio
+import logging
 from time import perf_counter
+from typing import NoReturn
 from uuid import uuid4
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
@@ -9,13 +11,25 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.runtime import Runtime
 
 from prism_server.core.config import Settings
+from prism_server.core.exceptions import RuntimeServiceError
 from prism_server.core.secrets import CredentialCipher
 from prism_server.db.postgres import PostgresDatabase
 from prism_server.graphs.research.context import ResearchContext
 from prism_server.graphs.research.state import ResearchOutput, ResearchState
-from prism_server.integrations.chat_models import create_chat_model
+from prism_server.integrations.chat_models import invoke_chat_model
+from prism_server.integrations.generation.service import generate
+from prism_server.integrations.model_network import (
+    exception_types,
+    inherits_proxy,
+    model_failure_message,
+)
+from prism_server.integrations.multimodal import chat_content, save_response_media, validate_media
+from prism_server.repositories.media import MediaRepository
 from prism_server.repositories.model_connections import ModelConnectionRepository
+from prism_server.repositories.runtime_runs import RunRepository
 from prism_server.schemas.models import ConnectionRecord
+
+logger = logging.getLogger(__name__)
 
 
 def connection_repository() -> ModelConnectionRepository:
@@ -53,6 +67,27 @@ async def model_node(
     prompt = state.prompt
     history = state.history
     connection, api_key = await asyncio.to_thread(resolve_model, context)
+    media_repository = MediaRepository((await asyncio.to_thread(connection_repository)).database)
+    assets = await asyncio.to_thread(media_repository.list_refs, state.attachment_ids)
+    await asyncio.to_thread(validate_media, connection, assets, state.generation_mode)
+    started = perf_counter()
+    async def fail(message: str) -> NoReturn:
+        if state.request_id:
+            await asyncio.to_thread(RunRepository(media_repository.database).save_model_error, state.request_id, connection.model_id, message)
+        raise RuntimeError(message) from None
+
+    if connection.is_generation:
+        try:
+            result = await generate(connection, api_key, prompt, state.generation_mode or connection.generation_mode, assets, media_repository, state.request_id or str(uuid4()))
+        except RuntimeServiceError as exc:
+            await fail(str(exc.detail))
+        except Exception as exc:
+            logger.warning("生成调用失败 model_id=%s exception_types=%s", connection.model_id, exception_types(exc))
+            await fail(model_failure_message(exc, connection, api_key))
+        return ResearchOutput(message="生成完成，结果已保存。", media=result.media, provider_task_id=result.provider_task_id, request_id=state.request_id or str(uuid4()), execution_mode="model", latency_seconds=round(perf_counter() - started, 3), usage=result.usage)
+    historical_ids = [media_id for turn in history for media_id in turn.attachment_ids]
+    historical = await asyncio.to_thread(media_repository.list_refs, historical_ids)
+    await asyncio.to_thread(validate_media, connection, [*historical, *assets])
     system_prompt = (
         connection.system_prompt if context.system_prompt is None else context.system_prompt
     )
@@ -60,41 +95,28 @@ async def model_node(
     if system_prompt:
         messages.append(SystemMessage(content=system_prompt))
     for turn in history:
-        messages.append(
-            HumanMessage(content=turn.content)
-            if turn.role == "user"
-            else AIMessage(content=turn.content)
-        )
-    messages.append(HumanMessage(content=prompt.strip()))
-    started = perf_counter()
+        if turn.role == "user":
+            content = await asyncio.to_thread(chat_content, turn.content, turn.attachment_ids, connection, media_repository)
+            messages.append(HumanMessage(content=content))
+        else:
+            messages.append(AIMessage(content=turn.content))
+            if turn.attachment_ids:
+                content = await asyncio.to_thread(chat_content, "上一轮生成的媒体，供继续分析：", turn.attachment_ids, connection, media_repository)
+                messages.append(HumanMessage(content=content))
+    content = await asyncio.to_thread(chat_content, prompt.strip(), state.attachment_ids, connection, media_repository)
+    messages.append(HumanMessage(content=content))
     try:
-        model = await asyncio.to_thread(create_chat_model, connection, api_key)
-        response = await model.ainvoke(messages, config=config)
+        response = await invoke_chat_model(connection, api_key, messages, config)
     except Exception as exc:
         # 提供方响应可能包含请求内容，不将原始异常体写入图输出或对外错误。
-        status = getattr(exc, "status_code", None)
-        message = {
-            401: "模型认证失败，请检查 API Key。",
-            403: "模型接口拒绝访问，请检查权限。",
-            429: "模型接口限流或额度不足，请稍后重试。",
-        }.get(status, "模型调用失败，请检查模型名、接口地址、参数和网络后重试。")
-        raise RuntimeError(message) from None
-    content = response.content
-    text = (
-        content
-        if isinstance(content, str)
-        else "\n".join(
-            block["text"]
-            for block in content
-            if isinstance(block, dict)
-            and block.get("type") == "text"
-            and isinstance(block.get("text"), str)
-        )
-    )
-    if not text.strip():
-        raise RuntimeError("模型未返回文字内容，请检查模型是否支持文本对话或增大输出上限。")
+        logger.warning("模型调用失败 model_id=%s provider=%s inherit_proxy=%s elapsed=%.2fs exception_types=%s", connection.model_id, connection.provider, inherits_proxy(connection), perf_counter() - started, exception_types(exc))
+        await fail(model_failure_message(exc, connection, api_key))
+    text, media = await asyncio.to_thread(save_response_media, response.content, media_repository)
+    if not text.strip() and not media:
+        raise RuntimeError("模型未返回可展示的文本或媒体，请检查模型协议和输出上限。")
     return ResearchOutput(
-        message=text,
+        message=text or "生成完成，结果已保存。",
+        media=media,
         request_id=state.request_id or str(uuid4()),
         execution_mode="model",
         latency_seconds=round(perf_counter() - started, 3),

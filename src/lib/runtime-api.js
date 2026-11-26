@@ -59,10 +59,15 @@ function isRun(value) {
     typeof value.id === 'string' &&
     typeof value.graph_id === 'string' &&
     typeof value.input === 'string' &&
+    (value.input_media === undefined ||
+      (Array.isArray(value.input_media) && value.input_media.every(isMedia))) &&
     typeof value.started_at === 'string' &&
     typeof value.status === 'string' &&
     ['pending', 'running', 'success', 'error', 'timeout', 'interrupted'].includes(value.status) &&
-    (value.output == null || object(value.output)) &&
+    (value.output == null ||
+      (object(value.output) &&
+        (value.output.media === undefined ||
+          (Array.isArray(value.output.media) && value.output.media.every(isMedia))))) &&
     typeof value.trace_status === 'string' &&
     ['unverified', 'verified'].includes(value.trace_status)
   );
@@ -82,15 +87,16 @@ function errorMessage(detail) {
  * @param {string} path
  * @param {RequestInit} [options]
  * @param {AbortSignal} [signal]
+ * @param {number} [timeoutMs]
  * @returns {Promise<unknown>}
  */
-async function request(path, options = {}, signal) {
+async function request(path, options = {}, signal, timeoutMs = 35000) {
   const controller = new AbortController();
   // 用户关掉窗口和请求超时都会取消等待，结束后会移除对应监听和计时。
   const abort = () => controller.abort();
   if (signal?.aborted) abort();
   else signal?.addEventListener('abort', abort, { once: true });
-  const timer = setTimeout(abort, 35000);
+  const timer = setTimeout(abort, timeoutMs);
   try {
     const response = await fetch(`/api/runtime/${path}`, {
       ...options,
@@ -154,13 +160,28 @@ export async function getRuns(offset = 0, signal) {
  * @param {string} modelId
  * @param {string} conversationId
  * @param {AbortSignal} [signal]
+ * @param {string[]} [attachmentIds]
+ * @param {import('../types').GenerationMode} [generationMode]
  */
-export async function createRun(prompt, modelId, conversationId, signal) {
+export async function createRun(
+  prompt,
+  modelId,
+  conversationId,
+  signal,
+  attachmentIds = [],
+  generationMode,
+) {
   const data = await request(
     'runs',
     {
       method: 'POST',
-      body: JSON.stringify({ prompt, model_id: modelId, conversation_id: conversationId }),
+      body: JSON.stringify({
+        prompt,
+        model_id: modelId,
+        conversation_id: conversationId,
+        attachment_ids: attachmentIds,
+        generation_mode: generationMode,
+      }),
     },
     signal,
   );
@@ -204,7 +225,39 @@ function isModelConnection(value) {
     object(value) &&
     typeof value.model_id === 'string' &&
     typeof value.name === 'string' &&
-    (value.provider === 'openai' || value.provider === 'anthropic') &&
+    [
+      'openai',
+      'anthropic',
+      'qwen',
+      'nvidia_cosmos',
+      'openai_image',
+      'qwen_image',
+      'seedance',
+      'wan',
+      'krea',
+      'moss_image',
+      'minimax_image',
+    ].includes(String(value.provider)) &&
+    Array.isArray(value.supported_modes) &&
+    value.supported_modes.every((mode) =>
+      ['text2image', 'image2image', 'text2video', 'image2video', 'video2video'].includes(
+        String(mode),
+      ),
+    ) &&
+    Array.isArray(value.input_modalities) &&
+    value.input_modalities.every((kind) => ['image', 'video'].includes(String(kind))) &&
+    ['text2image', 'image2image', 'text2video', 'image2video', 'video2video'].includes(
+      String(value.generation_mode),
+    ) &&
+    object(value.generation) &&
+    typeof value.generation.resolution === 'string' &&
+    typeof value.generation.num_frames === 'number' &&
+    typeof value.generation.num_inference_steps === 'number' &&
+    typeof value.generation.fps === 'number' &&
+    typeof value.generation.image_size === 'string' &&
+    typeof value.generation.duration === 'number' &&
+    typeof value.generation.aspect_ratio === 'string' &&
+    typeof value.generation.video_resolution === 'string' &&
     typeof value.api_model === 'string' &&
     typeof value.base_url === 'string' &&
     typeof value.enabled === 'boolean' &&
@@ -213,8 +266,67 @@ function isModelConnection(value) {
     Number.isInteger(value.revision) &&
     typeof value.max_tokens === 'number' &&
     typeof value.timeout_seconds === 'number' &&
+    ['off', 'on', 'default'].includes(String(value.qwen_thinking)) &&
     (value.temperature === null || typeof value.temperature === 'number')
   );
+}
+
+/** @returns {Promise<import('../types').ProviderDefinition[]>} */
+export async function getProviders() {
+  const data = await request('providers');
+  if (
+    !Array.isArray(data) ||
+    !data.every(
+      (item) =>
+        object(item) &&
+        typeof item.id === 'string' &&
+        typeof item.label === 'string' &&
+        typeof item.base_url === 'string' &&
+        typeof item.api_model === 'string' &&
+        typeof item.hint === 'string' &&
+        typeof item.documentation === 'string' &&
+        typeof item.timeout_seconds === 'number' &&
+        Array.isArray(item.modes) &&
+        item.modes.every((mode) =>
+          ['text2image', 'image2image', 'text2video', 'image2video', 'video2video'].includes(
+            String(mode),
+          ),
+        ),
+    )
+  )
+    throw new Error('服务端接入目录格式不匹配。');
+  return data;
+}
+
+/** @param {unknown} value @returns {value is import('../types').MediaAsset} */
+function isMedia(value) {
+  return (
+    object(value) &&
+    typeof value.id === 'string' &&
+    /^[0-9a-f-]{36}$/.test(value.id) &&
+    (value.kind === 'image' || value.kind === 'video') &&
+    typeof value.mime_type === 'string' &&
+    typeof value.filename === 'string' &&
+    typeof value.size === 'number' &&
+    value.size > 0 &&
+    value.url === `/api/runtime/media/${value.id}`
+  );
+}
+
+/** 二进制文件上传，密钥仍只在服务端使用。 @param {File} file @param {AbortSignal} [signal] */
+export async function uploadMedia(file, signal) {
+  const data = await request(
+    `media?filename=${encodeURIComponent(file.name.slice(0, 200))}`,
+    {
+      method: 'POST',
+      body: file,
+      headers: { 'Content-Type': file.type },
+    },
+    signal,
+    120000,
+  );
+  if (!isMedia(data)) throw new Error('媒体上传响应格式不匹配。');
+  return data;
 }
 /** @param {AbortSignal} [signal] */
 export async function getModelConnections(signal) {

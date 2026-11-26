@@ -16,6 +16,8 @@ from prism_server.core.exceptions import RuntimeServiceError
 from prism_server.core.secrets import CredentialCipher
 from prism_server.integrations.agent_server import create_agent_client, public_agent_error
 from prism_server.integrations.langsmith import initialize_tracing, read_trace_url
+from prism_server.integrations.multimodal import validate_media
+from prism_server.repositories.media import MediaRepository
 from prism_server.repositories.model_connections import ModelConnectionRepository
 from prism_server.repositories.runtime_runs import RunRepository
 from prism_server.schemas.runtime import TERMINAL_STATUSES, RunInput, RunRecord, RunStatus
@@ -39,6 +41,7 @@ class RuntimeService:
         self.client_factory = client_factory or partial(create_agent_client, settings)
         self.trace_reader = trace_reader or partial(read_trace_url, settings)
         self.models = ModelConnectionRepository(repository.database, CredentialCipher(settings.model_encryption_key))
+        self.media = MediaRepository(repository.database)
 
     async def initialize(self) -> None:
         """启动时准备数据库表；同步数据库操作放进工作线程。"""
@@ -50,7 +53,7 @@ class RuntimeService:
         settings = self.settings
         return {
             "service": "prism-research-server",
-            "stage": "model-chat",
+            "stage": "multimodal-research",
             "graph_id": settings.graph_id,
             "execution_mode": "model",
             "agent_public_url": settings.public_api_url,
@@ -88,15 +91,31 @@ class RuntimeService:
     async def create_run(self, payload: RunInput) -> RunRecord:
         """先记下请求，再通过 SDK 创建线程和运行，方便失败后继续排查。"""
         connection, _ = await asyncio.to_thread(self.models.resolve, payload.model_id)
-        await self.conversation_runs(payload.conversation_id)
+        previous_records = await self.conversation_runs(payload.conversation_id)
+        assets = await asyncio.to_thread(self.media.list_refs, payload.attachment_ids)
+        await asyncio.to_thread(validate_media, connection, assets, payload.generation_mode)
+        if not connection.is_generation:
+            historical_ids = []
+            for previous in previous_records:
+                if previous.status == "success":
+                    historical_ids.extend(asset.id for asset in previous.input_media)
+                    historical_ids.extend(asset["id"] for asset in (previous.output or {}).get("media", []))
+            historical = await asyncio.to_thread(self.media.list_refs, historical_ids)
+            await asyncio.to_thread(validate_media, connection, [*historical, *assets])
         local_id = str(uuid4())
         record, history_records = await asyncio.to_thread(
             self.repository.create_turn,
-            RunRecord(id=local_id, graph_id=self.settings.graph_id, input=payload.prompt, status="pending", started_at=utc_now(), conversation_id=payload.conversation_id, model_id=payload.model_id, model_snapshot={"name": connection.name, "provider": connection.provider, "api_model": connection.api_model, "revision": connection.revision, "system_prompt": connection.system_prompt}),
+            RunRecord(id=local_id, graph_id=self.settings.graph_id, input=payload.prompt, input_media=assets, status="pending", started_at=utc_now(), conversation_id=payload.conversation_id, model_id=payload.model_id, model_snapshot={"name": connection.name, "provider": connection.provider, "api_model": connection.api_model, "revision": connection.revision, "system_prompt": connection.system_prompt, "qwen_thinking": connection.qwen_thinking if connection.supports_qwen_thinking else None, "generation_mode": payload.generation_mode or connection.generation_mode if connection.is_generation else None, "generation": connection.generation.model_dump() if connection.is_generation else None}),
         )
         history = []
         for previous in history_records:
-            history.extend([{"role": "user", "content": previous.input}, {"role": "assistant", "content": str(previous.output["message"])}])
+            user = {"role": "user", "content": previous.input}
+            assistant = {"role": "assistant", "content": str(previous.output["message"])}
+            if previous.input_media:
+                user["attachment_ids"] = [asset.id for asset in previous.input_media]
+            if previous.output.get("media"):
+                assistant["attachment_ids"] = [asset["id"] for asset in previous.output["media"]]
+            history.extend([user, assistant])
         try:
             async with self.client_factory() as client:
                 thread = await client.threads.create(metadata={"prism_run_id": local_id})
@@ -105,10 +124,10 @@ class RuntimeService:
                 run = await client.runs.create(
                     thread_id,
                     self.settings.graph_id,
-                    input={"prompt": payload.prompt, "request_id": local_id, "history": history},
+                    input={"prompt": payload.prompt, "request_id": local_id, "history": history if not connection.is_generation else [], "attachment_ids": payload.attachment_ids, "generation_mode": payload.generation_mode},
                     context={"model_id": payload.model_id, "model_revision": connection.revision, "system_prompt": connection.system_prompt, "tools": []},
-                    metadata={"prism_run_id": local_id, "prism_stage": "2.6", "purpose": "model-chat"},
-                    config={"tags": ["prism", "model-chat"]},
+                    metadata={"prism_run_id": local_id, "purpose": "multimodal-research"},
+                    config={"tags": ["prism", "multimodal-research"]},
                 )
             return await asyncio.to_thread(
                 self.repository.update, local_id, agent_run_id=run["run_id"], status="running",
@@ -141,7 +160,11 @@ class RuntimeService:
                         raise ValueError("图输出格式不匹配")
                     output = values
                 elif status in {"error", "timeout", "interrupted"}:
-                    error = {"error": "图执行失败，请在 Studio 检查运行。", "timeout": "图执行超时。", "interrupted": "运行已中断。"}[status]
+                    # 节点保存的是脱敏后的业务错误；不回显 SDK 的原始异常体。
+                    latest = await asyncio.to_thread(self.repository.get, record.id)
+                    error = (latest.error if latest else None) or {"error": "图执行失败，请在 Studio 检查运行。", "timeout": "图执行超时。", "interrupted": "运行已中断。"}[status]
+                    if status == "interrupted" and record.model_snapshot and record.model_snapshot.get("generation_mode"):
+                        error += " 中断仅停止本系统等待，不代表厂商已取消生成；请到厂商控制台查询。"
             return await asyncio.to_thread(
                 self.repository.update,
                 record.id,

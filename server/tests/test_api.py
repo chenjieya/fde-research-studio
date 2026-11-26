@@ -14,7 +14,7 @@ from prism_server.services.runtime import RuntimeService
 from test_workspace import sample_workspace
 
 
-class ApiTests(PostgresTestCase):
+class ApiFixture(PostgresTestCase):
     def setUp(self):
         super().setUp()
         repo = RunRepository(self.database)
@@ -42,6 +42,8 @@ class ApiTests(PostgresTestCase):
     def tearDown(self):
         self.client.__exit__(None, None, None)
 
+
+class ApiTests(ApiFixture):
     def test_sdk_graph_and_run_lifecycle(self):
         self.assertTrue(self.client.get("/prism/runtime/graph").json()["compiled"])
         created = self.client.post("/prism/runtime/runs", json=self.run_payload)

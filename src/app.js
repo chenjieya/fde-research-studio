@@ -20,6 +20,12 @@ import {
 } from './lib/workspace-api.js';
 import { generateReport, renderMarkdown, reportHtml } from './lib/reports.js';
 import { icon, artwork, modelCard } from './components/visuals.js';
+import { mediaView } from './components/media-view.js';
+import {
+  connectionFields,
+  bindConnectionForm,
+  readConnectionForm,
+} from './components/model-connection.js';
 import { mountRuntimeConsole } from './components/runtime-console.js';
 import * as runtimeApi from './lib/runtime-api.js';
 import './chat.css';
@@ -356,16 +362,21 @@ async function modelConnectionForm(id) {
     'form-modal',
   );
   try {
-    const connections = await runtimeApi.getModelConnections();
+    const [connections, providers] = await Promise.all([
+      runtimeApi.getModelConnections(),
+      runtimeApi.getProviders(),
+    ]);
     if (!modal.open || !modal.querySelector(`#${marker}`)) return;
     const c = connections.find((item) => item.model_id === id);
     formDialog(
       '配置模型接入',
       esc(model.name),
-      `<div class="connection-intro"><span class="eyebrow">MODEL CONNECTION</span><p>将研究档案连接到可运行的模型，在运行工作室开始对话。</p></div><div class="form-grid"><label class="field"><span>适配协议</span><select name="provider"><option value="openai" ${c?.provider !== 'anthropic' ? 'selected' : ''}>OpenAI 兼容</option><option value="anthropic" ${c?.provider === 'anthropic' ? 'selected' : ''}>Anthropic</option></select></label>${input('API 模型名 *', 'api_model', c?.api_model, 'required maxlength="200" placeholder="接口要求的模型标识"')}</div>${input('Base URL *', 'base_url', c?.base_url || 'https://api.openai.com/v1', 'required type="url" maxlength="2000"')}<p class="form-hint">OpenAI 兼容接口通常以 /v1 结尾；Anthropic 官方为 https://api.anthropic.com。</p>${input(c?.api_key_configured ? 'API Key（已保存，留空保留）' : 'API Key（无密钥的本地接口可留空）', 'api_key', '', 'type="password" autocomplete="new-password" maxlength="8192"')}${c?.api_key_configured ? '<label class="acknowledge"><input type="checkbox" name="clear_api_key">清除已保存的 API Key</label>' : ''}${textarea('系统提示词', 'system_prompt', c?.system_prompt ?? '你是严谨的多模态模型研究助手。区分事实、推断与待验证问题。', 'maxlength="20000" rows="4"')}<div class="form-grid">${input('温度（可选）', 'temperature', c?.temperature == null ? '' : String(c.temperature), 'type="number" min="0" max="2" step="any" placeholder="留空使用模型默认值"')}${input('最大输出 Token *', 'max_tokens', String(c?.max_tokens ?? 2048), 'required type="number" min="1" max="131072" step="1"')}${input('模型请求超时（秒）*', 'timeout_seconds', String(c?.timeout_seconds ?? 120), 'required type="number" min="5" max="600" step="1"')}</div><label class="acknowledge"><input type="checkbox" name="enabled" ${c?.enabled !== false ? 'checked' : ''}>在运行工作室启用此模型</label><input type="hidden" name="expected_revision" value="${c?.revision ?? 0}"><p class="form-hint">密钥加密保存于服务端，不加入研究备份。保存配置不会发起模型请求。</p>`,
+      connectionFields(c, providers, model.name),
       'model-connection',
       id,
     );
+    const form = modal.querySelector('form');
+    if (form instanceof HTMLFormElement) bindConnectionForm(form, providers);
   } catch (error) {
     if (modal.querySelector(`#${marker}`)) {
       const node = modal.querySelector(`#${marker}`);
@@ -422,7 +433,7 @@ function experimentForm(modelId = '', id = '', run = null) {
       .querySelector('.form-body')
       ?.insertAdjacentHTML(
         'afterbegin',
-        `<details class="experiment-source" open><summary>本轮原始输入与输出 · ${esc(run.model_snapshot?.api_model || '')}</summary><h4>输入</h4><pre>${esc(run.input)}</pre><h4>输出</h4><pre>${esc(run.output?.message || '')}</pre><p>请按实际标准填写成功数量、结论和限制；成本可留空。</p></details>`,
+        `<details class="experiment-source" open><summary>本轮原始输入与输出 · ${esc(run.model_snapshot?.api_model || '')}</summary><h4>输入</h4><pre>${esc(run.input)}</pre>${mediaView(run.input_media)}<h4>输出</h4><pre>${esc(run.output?.message || '')}</pre>${mediaView(run.output?.media)}<p>请按实际标准填写成功数量、结论和限制；成本可留空。</p></details>`,
       );
     const subtitle = modal.querySelector('.modal-header p');
     if (subtitle) subtitle.textContent = '确认本轮模型结果，补充评价后加入实验对比。';
@@ -446,7 +457,7 @@ function experimentDetail(id) {
     .getExperimentSource(id)
     .then((run) => {
       if (!source.isConnected || !modal.open || !run) return;
-      source.innerHTML = `<details class="experiment-source"><summary>关联模型运行 · ${esc(run.model_snapshot?.name || '')}</summary><p>${esc(run.started_at)} / ${esc(run.model_snapshot?.provider || '')} / ${esc(run.model_snapshot?.api_model || '')}</p><h4>系统提示词</h4><pre>${esc(run.model_snapshot?.system_prompt || '未设置')}</pre><h4>输入</h4><pre>${esc(run.input)}</pre><h4>输出</h4><pre>${esc(run.output?.message || '')}</pre></details>`;
+      source.innerHTML = `<details class="experiment-source"><summary>关联模型运行 · ${esc(run.model_snapshot?.name || '')}</summary><p>${esc(run.started_at)} / ${esc(run.model_snapshot?.provider || '')} / ${esc(run.model_snapshot?.api_model || '')}</p><h4>系统提示词</h4><pre>${esc(run.model_snapshot?.system_prompt || '未设置')}</pre><h4>输入</h4><pre>${esc(run.input)}</pre>${mediaView(run.input_media)}<h4>输出</h4><pre>${esc(run.output?.message || '')}</pre>${mediaView(run.output?.media)}</details>`;
     })
     .catch((error) => {
       if (source.isConnected)
@@ -813,22 +824,6 @@ document.addEventListener('input', (event) => {
   }
 });
 document.addEventListener('change', async (event) => {
-  if (
-    event.target instanceof HTMLSelectElement &&
-    event.target.name === 'provider' &&
-    event.target.form?.getAttribute('data-form') === 'model-connection'
-  ) {
-    const base = event.target.form.elements.namedItem('base_url');
-    const temperature = event.target.form.elements.namedItem('temperature');
-    const anthropic = event.target.value === 'anthropic';
-    if (
-      base instanceof HTMLInputElement &&
-      ['', 'https://api.openai.com/v1', 'https://api.anthropic.com'].includes(base.value)
-    )
-      base.value = anthropic ? 'https://api.anthropic.com' : 'https://api.openai.com/v1';
-    if (temperature instanceof HTMLInputElement) temperature.max = anthropic ? '1' : '2';
-    return;
-  }
   const target = event.target;
   if (!(target instanceof HTMLSelectElement)) return;
   if (target.id === 'capability-filter') {
@@ -870,25 +865,11 @@ document.addEventListener('submit', async (event) => {
   try {
     if (formType === 'model-connection') {
       if (saving) return;
-      const provider = field('provider');
-      if (provider !== 'openai' && provider !== 'anthropic') throw new Error('请选择适配协议。');
       saving = true;
       const submit = form.querySelector('button[type="submit"]');
       if (submit instanceof HTMLButtonElement) submit.disabled = true;
       try {
-        await runtimeApi.saveModelConnection(existingId, {
-          provider,
-          api_model: field('api_model'),
-          base_url: field('base_url'),
-          api_key: field('api_key'),
-          clear_api_key: fields.get('clear_api_key') === 'on',
-          enabled: fields.get('enabled') === 'on',
-          system_prompt: field('system_prompt'),
-          temperature: field('temperature') ? Number(field('temperature')) : null,
-          max_tokens: Number(field('max_tokens')),
-          timeout_seconds: Number(field('timeout_seconds')),
-          expected_revision: Number(field('expected_revision')),
-        });
+        await runtimeApi.saveModelConnection(existingId, readConnectionForm(form));
         const secret = form.elements.namedItem('api_key');
         if (secret instanceof HTMLInputElement) secret.value = '';
         window.dispatchEvent(new Event('prism:model-connections-changed'));
