@@ -24,9 +24,9 @@ class PostgresDatabase:
     @contextmanager
     def connect(self) -> Iterator[Connection[dict[str, Any]]]:
         """正常退出时提交，出错时回滚，最后关闭连接。"""
-        # 连接串含数据库密码，不把它写进日志或接口响应。
+        # SSH 隧道上的连接握手允许短暂网络波动；连接串不写入日志或响应。
         with psycopg.connect(
-            self.url, row_factory=dict_row, connect_timeout=5,
+            self.url, row_factory=dict_row, connect_timeout=15,
             options=f"-c search_path={self.schema} -c statement_timeout=15000 -c lock_timeout=10000",
         ) as connection:
             yield connection
