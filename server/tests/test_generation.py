@@ -165,6 +165,32 @@ class GenerationTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(len(polls), 2)
                 jobs.submitted.assert_called_once_with("same-request", task_id)
 
+    async def test_seedance_frame_ratio_depends_on_model_and_task(self):
+        media = FakeMedia()
+        asset = media.get(str(uuid4()))[0]
+        for model, count, expected in (
+            ("doubao-seedance-2-5-260628", 1, "adaptive"),
+            ("doubao-seedance-2-5-260628", 2, "adaptive"),
+            ("doubao-seedance-2-5-260628", 0, "9:16"),
+            ("doubao-seedance-2-0-260128", 1, "9:16"),
+        ):
+            with self.subTest(model=model, count=count):
+                config = connection("seedance", generation={"duration": 8, "aspect_ratio": "9:16"}).model_copy(update={"api_model": model})
+                jobs = MagicMock()
+                jobs.claim.return_value = None
+                def handler(request):
+                    if request.method == "POST":
+                        payload = json.loads(request.content)
+                        self.assertEqual(payload["ratio"], expected)
+                        self.assertEqual(payload["duration"], 8)
+                        self.assertEqual([item["role"] for item in payload["content"][1:]], ["first_frame", "last_frame"][:count])
+                        return httpx.Response(200, json={"id": "test-video"})
+                    url = "data:video/mp4;base64," + base64.b64encode(VIDEO).decode()
+                    return httpx.Response(200, json={"status": "succeeded", "content": {"video_url": url}})
+                with self.transport(handler), patch("prism_server.integrations.generation.tasks.GenerationJobRepository", return_value=jobs):
+                    result = await generate(config, "test-key", "测试", "image2video" if count else "text2video", [asset] * count, media, str(uuid4()))
+                self.assertEqual(result.provider_task_id, "test-video")
+
     async def test_upstream_error_has_code_but_no_body_or_credentials(self):
         def handler(request):
             return httpx.Response(400, json={"error": {"code": "InvalidParameter", "message": "Authorization Bearer secret-value https://private?key=secret-value"}, "request_id": "request-123"})

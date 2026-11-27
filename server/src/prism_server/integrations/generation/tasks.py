@@ -30,7 +30,10 @@ async def generate_task(
         for index, uri in enumerate(uris):
             content.append({"type": "image_url", "image_url": {"url": uri}, "role": "first_frame" if index == 0 else "last_frame"})
         payload = {"model": config.api_model, "content": content, "duration": options.duration, "resolution": options.video_resolution, "ratio": options.aspect_ratio, "generate_audio": options.audio, **seed}
-        if "seedance-1-0" in config.api_model.lower():
+        model = config.api_model.lower()
+        if mode == "image2video" and "seedance-2-5" in model:
+            payload["ratio"] = "adaptive"
+        if "seedance-1-0" in model:
             payload.pop("generate_audio")
         headers = {}
     elif config.provider == "wan":

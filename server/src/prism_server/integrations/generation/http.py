@@ -32,6 +32,8 @@ def provider_error(status: int, data: dict, label: str, secret: str) -> RuntimeS
         422: "输入素材或生成参数不符合模型要求。",
         429: "请求限流或额度不足，请到厂商控制台核对。",
     }.get(status, "服务暂时不可用，请到厂商控制台查询任务状态后再决定是否重试。")
+    if label == "seedance" and code == "InvalidParameter.TaskTypeConstraint":
+        message = "生成参数与任务类型不兼容，请核对素材、画面比例和时长。Seedance 2.5 的首帧和首尾帧任务要求比例为 adaptive。"
     detail = f"{label}：{message}（HTTP {status}"
     if code:
         detail += f"，错误码 {code}"
